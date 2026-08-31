@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Character Studio 3D — Viewer</title>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: #0b0d12;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+  model-viewer {
+    width: 100%; height: 100%;
+    background: #0b0d12;
+    --progress-bar-color: transparent;
+    --progress-mask: transparent;
+  }
+</style>
+<!-- The 3D engine is served from the on-device loopback server — fully offline. -->
+<script type="module" src="/viewer/model-viewer.min.js"></script>
+</head>
+<body>
+<model-viewer
+  id="mv"
+  camera-controls
+  disable-pan
+  disable-tap
+  touch-action="none"
+  interaction-prompt="none"
+  environment-image="neutral"
+  shadow-intensity="1"
+  exposure="1"></model-viewer>
+
+<script>
+(function () {
+  const mv = document.getElementById('mv');
+  let bridgeReady = false;
+  let lastTap = 0;
+  let loaded = false;
+  let loopEnabled = true;
+
+  function post(obj) {
+    if (window.StudioBridge) {
+      try { window.StudioBridge.postMessage(JSON.stringify(obj)); } catch (e) {}
+    }
+  }
+
+  // ---- model lifecycle -------------------------------------------------
+  mv.addEventListener('progress', (e) => {
+    const v = e && e.detail ? (e.detail.totalProgress || 0) : 0;
+    post({ type: 'progress', value: v });
+  });
+
+  mv.addEventListener('load', () => {
+    loaded = true;
+    let anims = [];
+    try { anims = mv.availableAnimations || []; } catch (e) {}
+    let dur = 0;
+    try { if (typeof mv.getDuration === 'function') dur = mv.getDuration() || 0; } catch (e) {}
+    post({ type: 'load', animations: anims, duration: dur });
+  });
+
+  mv.addEventListener('error', () => {
+    loaded = false;
+    post({ type: 'error' });
+  });
+
+  // ---- playback ticker -------------------------------------------------
+  setInterval(() => {
+    if (!loaded) return;
+    let t = 0, d = 0;
+    try { t = mv.currentTime || 0; } catch (e) {}
+    try { if (typeof mv.getDuration === 'function') d = mv.getDuration() || 0; } catch (e) {}
+    post({ type: 'tick', time: t, duration: d });
+  }, 200);
+
+  // ---- gestures ---------------------------------------------------------
+  function resetCamera() {
+    try {
+      mv.cameraOrbit = '0deg 75deg auto';
+      mv.cameraTarget = 'auto';
+      mv.fieldOfView = 'auto';
+    } catch (e) {}
+  }
+  mv.addEventListener('pointerdown', () => {
+    const now = Date.now();
+    if (now - lastTap < 300) resetCamera();  // double tap → reset camera
+    lastTap = now;
+  });
+
+  // ---- command API (called from Dart) -----------------------------------
+  function ready(fn) {
+    Promise.all([
+      new Promise((r) => { if (document.readyState === 'complete') r(); else window.addEventListener('load', r); }),
+      (window.customElements && customElements.whenDefined)
+        ? customElements.whenDefined('model-viewer') : Promise.resolve()
+    ]).then(fn).catch(fn);
+  }
+
+  function withMv(fn) { ready(() => { try { fn(mv); } catch (e) {} }); }
+
+  window.studio = {
+    setModel: (url) => { loaded = false; withMv((m) => { try { m.pause(); } catch (e) {}; m.removeAttribute('poster'); m.src = url; }); },
+    setAnimation: (name) => withMv((m) => { m.animationName = name || null; }),
+    play: () => withMv((m) => { m.loop = loopEnabled; m.play({ repetitions: Infinity }); }),
+    pause: () => withMv((m) => { m.pause(); }),
+    restart: () => withMv((m) => { m.currentTime = 0; m.loop = loopEnabled; m.play({ repetitions: Infinity }); }),
+    stop: () => withMv((m) => { m.pause(); m.currentTime = 0; }),
+    setLoop: (v) => { loopEnabled = !!v; withMv((m) => { m.loop = !!v; }); },
+    setSpeed: (v) => withMv((m) => { m.timeScale = Number(v) || 1; }),
+    seek: (t) => withMv((m) => { m.currentTime = Number(t) || 0; }),
+    setAutoRotate: (v) => withMv((m) => { m.autoRotate = !!v; m.autoRotateDelay = 0; }),
+    setOrbit: (o) => withMv((m) => { m.cameraOrbit = o; }),
+    resetCamera: () => { resetCamera(); },
+    setLighting: (exposure, shadow, softness) => withMv((m) => {
+      m.exposure = Number(exposure);
+      m.shadowIntensity = Number(shadow);
+      m.shadowSoftness = Number(softness);
+    }),
+    setBackground: (css) => withMv((m) => { m.style.background = css; }),
+    dispose: () => {
+      try { mv.pause(); } catch (e) {}
+      try { mv.src = null; } catch (e) { try { mv.removeAttribute('src'); } catch (_) {} }
+      loaded = false;
+    },
+    capture: () => {
+      ready(() => {
+        try {
+          if (typeof mv.toDataURL === 'function') {
+            mv.toDataURL('image/png').then(
+              (d) => post({ type: 'thumbnail', data: d }),
+              () => post({ type: 'thumbnail', data: null })
+            );
+          } else {
+            post({ type: 'thumbnail', data: null });
+          }
+        } catch (e) { post({ type: 'thumbnail', data: null }); }
+      });
+    }
+  };
+
+  // Announce the bridge as soon as the custom element is upgraded so early
+  // Dart commands are never dropped.
+  ready(() => { bridgeReady = true; post({ type: 'pageReady' }); });
+})();
+</script>
+</body>
+</html>

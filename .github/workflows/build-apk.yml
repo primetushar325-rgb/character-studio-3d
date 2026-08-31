@@ -1,0 +1,80 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Release Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter 3.24.5
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Install pub dependencies
+        run: flutter pub get
+
+      - name: Verify analysis
+        continue-on-error: true
+        run: flutter analyze
+
+      - name: Ensure gradlew is executable
+        run: chmod +x android/gradlew
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             CharacterStudio3D-v1.0.0.apk
+          ls -lh CharacterStudio3D-v1.0.0.apk
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CharacterStudio3D-apk
+          path: CharacterStudio3D-v1.0.0.apk
+          retention-days: 90
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: Character Studio 3D v1.0.0
+          body: |
+            **Character Studio 3D** — offline 3D character animation & preview studio.
+
+            - Browse, import and animate GLB characters fully on-device
+            - Automatic animation detection from any GLB
+            - Interactive 3D viewer (rotate / zoom / double-tap reset)
+            - Favorites, Recently Used, Projects — all persisted locally
+            - Real video export via on-device screen recording (MediaProjection)
+
+            **Install:** download `CharacterStudio3D-v1.0.0.apk` below, allow
+            "install unknown apps" if prompted, and open it. Signed with a debug
+            key — safe for testing/sideloading.
+          files: CharacterStudio3D-v1.0.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

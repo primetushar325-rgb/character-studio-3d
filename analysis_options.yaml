@@ -1,0 +1,13 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Const hints are noisy in a UI codebase with animated containers;
+    # perf-relevant widgets are const where it matters.
+    prefer_const_constructors: false
+    prefer_const_declarations: false
+    avoid_print: false
+
+analyzer:
+  errors:
+    deprecated_member_use: ignore

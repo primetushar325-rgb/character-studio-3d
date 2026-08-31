@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stylized 3D cube glyph (adaptive launcher foreground) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- soft glow -->
+    <path
+        android:pathData="M54,54 m-30,0 a30,30 0 1,1 60,0 a30,30 0 1,1 -60,0"
+        android:fillColor="#142036" />
+
+    <!-- cube: top face -->
+    <path
+        android:pathData="M54,26 L74,37 L54,48 L34,37 Z"
+        android:fillColor="#7B9BFF" />
+    <!-- cube: left face -->
+    <path
+        android:pathData="M34,37 L54,48 L54,74 L34,63 Z"
+        android:fillColor="#546EE0" />
+    <!-- cube: right face -->
+    <path
+        android:pathData="M74,37 L54,48 L54,74 L74,63 Z"
+        android:fillColor="#5EEAD4" />
+</vector>

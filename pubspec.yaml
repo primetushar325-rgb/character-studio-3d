@@ -1,0 +1,50 @@
+name: character_studio_3d
+description: >-
+  Character Studio 3D — an offline 3D character animation and preview studio
+  for Android. Browse, import and animate GLB characters entirely on-device.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management (single consistent solution across the app)
+  provider: ^6.1.2
+
+  # Local persistence (favorites, recents, settings, metadata, projects)
+  shared_preferences: ^2.3.2
+
+  # Filesystem access (character directory, thumbnails)
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+  # Android system file picker (Storage Access Framework — no permissions needed)
+  file_picker: ^8.1.3
+
+  # Local 3D viewer host (renders the bundled model-viewer engine offline)
+  webview_flutter: ^4.10.0
+
+  # Share exported videos / characters (all local, via Android sharesheet)
+  share_plus: ^10.1.4
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    # Bundled sample characters (add any new .glb here — the folder is scanned,
+    # no Dart code changes required).
+    - assets/characters/
+    # Offline 3D engine (model-viewer) + viewer bridge page
+    - assets/viewer/
