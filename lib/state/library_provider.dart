@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/character.dart';
 import '../models/recent_entry.dart';
 import '../repositories/character_repository.dart';
+import '../services/character_service.dart' show ImportStage, StagedImport;
 import '../services/animation_service.dart';
 import 'settings_provider.dart';
 
@@ -199,6 +200,57 @@ class LibraryProvider extends ChangeNotifier {
     await _repo.updateThumbnail(characterId, path);
     notifyListeners();
   }
+
+  // ---- v1.1: staged imports, mapping, duplicate --------------------------
+  Future<Object> stageImport(
+    List<String> paths, {
+    void Function(ImportStage stage)? onStage,
+  }) =>
+      _repo.stageImport(paths, onStage: onStage);
+
+  Future<Character> commitImport(
+    StagedImport staged, {
+    String? displayName,
+    Map<String, String>? animationMapping,
+    Map<String, String>? boneMapping,
+  }) async {
+    final committed = await _repo.commitImport(
+      staged,
+      displayName: displayName,
+      animationMapping: animationMapping,
+      boneMapping: boneMapping,
+    );
+    await refresh();
+    return committed;
+  }
+
+  Future<void> discardImport(StagedImport staged) => _repo.discardImport(staged);
+
+  Future<void> duplicate(Character c) async {
+    await _repo.duplicate(c);
+    await refresh();
+  }
+
+  Future<void> saveAnimationMapping(
+      Character c, Map<String, String> mapping) async {
+    await _repo.saveAnimationMapping(c, mapping);
+    notifyListeners();
+  }
+
+  Future<void> saveBoneMapping(Character c, Map<String, String> mapping) async {
+    await _repo.saveBoneMapping(c, mapping);
+    notifyListeners();
+  }
+
+  // ---- grouped library views ---------------------------------------------
+  List<Character> get bundledCharacters =>
+      _characters.where((c) => c.source == CharacterSource.bundled).toList();
+
+  List<Character> get importedCharacters =>
+      _characters.where((c) => c.source == CharacterSource.imported).toList();
+
+  List<Character> get readyCharacters =>
+      _characters.where((c) => c.readiness == CharacterReadiness.ready).toList();
 
   RecentEntry? lastUsageOf(String characterId) => _repo.lastUsageOf(characterId);
 }

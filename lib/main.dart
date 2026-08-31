@@ -46,6 +46,10 @@ Future<void> main() async {
 
   // The loopback server that serves the offline 3D engine + models.
   ViewerServerService.instance.configureCharactersDirectory(charactersDir);
+  final pendingDir = characterService.pendingDir;
+  if (pendingDir != null) {
+    ViewerServerService.instance.configurePendingDirectory(pendingDir);
+  }
   await ViewerServerService.instance.start();
 
   final exportService = ExportService();

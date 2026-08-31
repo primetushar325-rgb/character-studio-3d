@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/animation_names.dart';
 import '../../core/utils/formatters.dart';
 import '../../models/animation_clip.dart';
 import '../../models/character.dart';
@@ -15,10 +16,12 @@ import '../../widgets/animated_icon_button.dart';
 import '../../widgets/color_picker_sheet.dart';
 import '../../widgets/error_view.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/micro_animations.dart';
 import '../../widgets/premium_button.dart';
 import '../../widgets/premium_dialog.dart';
 import '../../widgets/three_d_viewer.dart';
 import '../../widgets/thumbnail.dart';
+import '../actions/action_select_screen.dart';
 import '../export/export_screen.dart';
 
 /// Full-screen premium 3D animation player.
@@ -64,6 +67,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? _customHex;
   LightingPreset _lighting = LightingPreset.studio;
   bool _autoRotate = false;
+  bool _gridVisible = false;
+  bool _panEnabled = true;
+  bool _fullscreen = false;
 
   @override
   void initState() {
@@ -114,6 +120,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     await _viewer.applyBackground(_background, customHex: _customHex);
     await _viewer.applyLighting(_lighting);
+    await _viewer.setGridVisible(_gridVisible);
+    await _viewer.setPanEnabled(_panEnabled);
     await _viewer.setPlaybackSpeed(settings.defaultSpeed);
     await _viewer.setLoop(settings.autoLoop);
     await _viewer.setAutoRotateCamera(_autoRotate);
@@ -237,12 +245,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
         bottom: false,
         child: Column(
           children: [
-            _TopBar(
-              viewer: _viewer,
-              character: character,
-              onExport: () => _openExport(character),
-              onCapturePoster: () => _capturePoster(character),
-            ),
+            if (!_fullscreen)
+              _TopBar(
+                viewer: _viewer,
+                character: character,
+                onExport: () => _openExport(character),
+                onCapturePoster: () => _capturePoster(character),
+                onToggleFullscreen: () => setState(() => _fullscreen = true),
+              ),
+            if (_fullscreen)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 6, 12, 0),
+                  child: AnimatedIconButton(
+                    icon: Icons.close_fullscreen_rounded,
+                    tooltip: 'Exit fullscreen',
+                    semanticLabel: 'Exit fullscreen preview',
+                    background: AppColors.surfaceAlt,
+                    onPressed: () => setState(() => _fullscreen = false),
+                  ),
+                ),
+              ),
             // ---- 3D stage ----
             Expanded(
               child: Padding(
@@ -283,29 +307,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ),
             // ---- control deck ----
-            _ControlDeck(
-              viewer: _viewer,
-              character: character,
-              background: _background,
-              lighting: _lighting,
-              autoRotate: _autoRotate,
-              onBackgroundChanged: (preset, hex) {
-                setState(() {
-                  _background = preset;
-                  _customHex = hex;
-                });
-                _viewer.applyBackground(preset, customHex: hex);
-              },
-              // (record destructuring handled via two-arg callback)
-              onLightingChanged: (preset) {
-                setState(() => _lighting = preset);
-                _viewer.applyLighting(preset);
-              },
-              onAutoRotateChanged: (v) {
-                setState(() => _autoRotate = v);
-                _viewer.setAutoRotateCamera(v);
-              },
-            ),
+            if (!_fullscreen)
+              _ControlDeck(
+                viewer: _viewer,
+                character: character,
+                background: _background,
+                lighting: _lighting,
+                autoRotate: _autoRotate,
+                gridVisible: _gridVisible,
+                panEnabled: _panEnabled,
+                onBackgroundChanged: (preset, hex) {
+                  setState(() {
+                    _background = preset;
+                    _customHex = hex;
+                  });
+                  _viewer.applyBackground(preset, customHex: hex);
+                },
+                onLightingChanged: (preset) {
+                  setState(() => _lighting = preset);
+                  _viewer.applyLighting(preset);
+                },
+                onAutoRotateChanged: (v) {
+                  setState(() => _autoRotate = v);
+                  _viewer.setAutoRotateCamera(v);
+                },
+                onGridChanged: (v) {
+                  setState(() => _gridVisible = v);
+                  _viewer.setGridVisible(v);
+                },
+                onPanChanged: (v) {
+                  setState(() => _panEnabled = v);
+                  _viewer.setPanEnabled(v);
+                },
+                onResetCamera: () => _viewer.resetCamera(),
+              ),
           ],
         ),
       ),
@@ -459,12 +494,14 @@ class _TopBar extends StatelessWidget {
     required this.character,
     required this.onExport,
     required this.onCapturePoster,
+    required this.onToggleFullscreen,
   });
 
   final ThreeDController viewer;
   final Character character;
   final VoidCallback onExport;
   final VoidCallback onCapturePoster;
+  final VoidCallback onToggleFullscreen;
 
   @override
   Widget build(BuildContext context) {
@@ -518,6 +555,12 @@ class _TopBar extends StatelessWidget {
                 tooltip: 'Export video',
                 semanticLabel: 'Export animation as video',
                 onPressed: onExport,
+              ),
+              AnimatedIconButton(
+                icon: Icons.fullscreen_rounded,
+                tooltip: 'Fullscreen preview',
+                semanticLabel: 'Toggle fullscreen preview',
+                onPressed: onToggleFullscreen,
               ),
             ],
           ),
@@ -706,9 +749,14 @@ class _ControlDeck extends StatelessWidget {
     required this.background,
     required this.lighting,
     required this.autoRotate,
+    required this.gridVisible,
+    required this.panEnabled,
     required this.onBackgroundChanged,
     required this.onLightingChanged,
     required this.onAutoRotateChanged,
+    required this.onGridChanged,
+    required this.onPanChanged,
+    required this.onResetCamera,
   });
 
   final ThreeDController viewer;
@@ -716,9 +764,14 @@ class _ControlDeck extends StatelessWidget {
   final BackgroundPreset background;
   final LightingPreset lighting;
   final bool autoRotate;
+  final bool gridVisible;
+  final bool panEnabled;
   final void Function(BackgroundPreset preset, String? customHex) onBackgroundChanged;
   final ValueChanged<LightingPreset> onLightingChanged;
   final ValueChanged<bool> onAutoRotateChanged;
+  final ValueChanged<bool> onGridChanged;
+  final ValueChanged<bool> onPanChanged;
+  final VoidCallback onResetCamera;
 
   @override
   Widget build(BuildContext context) {
@@ -752,10 +805,13 @@ class _ControlDeck extends StatelessWidget {
               const SizedBox(height: 10),
               _TransportRow(viewer: viewer),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _OptionTile(
+              SizedBox(
+                height: 74,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _stageTile(
+                      context,
                       icon: background.icon,
                       label: 'Background',
                       value: background == BackgroundPreset.custom
@@ -763,19 +819,15 @@ class _ControlDeck extends StatelessWidget {
                           : background.label,
                       onTap: () => _pickBackground(context),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _OptionTile(
+                    _stageTile(
+                      context,
                       icon: lighting.icon,
                       label: 'Lighting',
                       value: lighting.label,
                       onTap: () => _pickLighting(context),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _OptionTile(
+                    _stageTile(
+                      context,
                       icon: autoRotate
                           ? Icons.screen_rotation_rounded
                           : Icons.center_focus_strong_rounded,
@@ -783,8 +835,33 @@ class _ControlDeck extends StatelessWidget {
                       value: autoRotate ? 'Auto-rotate' : 'Manual',
                       onTap: () => onAutoRotateChanged(!autoRotate),
                     ),
-                  ),
-                ],
+                    _stageTile(
+                      context,
+                      icon: gridVisible
+                          ? Icons.grid_on_rounded
+                          : Icons.grid_off_rounded,
+                      label: 'Grid',
+                      value: gridVisible ? 'On' : 'Off',
+                      onTap: () => onGridChanged(!gridVisible),
+                    ),
+                    _stageTile(
+                      context,
+                      icon: panEnabled
+                          ? Icons.pan_tool_rounded
+                          : Icons.pan_tool_alt_outlined,
+                      label: 'Pan',
+                      value: panEnabled ? 'On' : 'Off',
+                      onTap: () => onPanChanged(!panEnabled),
+                    ),
+                    _stageTile(
+                      context,
+                      icon: Icons.filter_center_focus_rounded,
+                      label: 'Reset',
+                      value: 'Camera',
+                      onTap: onResetCamera,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -807,6 +884,27 @@ class _ControlDeck extends StatelessWidget {
       builder: (sheetContext) => _LightingSheet(initial: lighting),
     );
     if (result != null) onLightingChanged(result);
+  }
+
+  Widget _stageTile(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: SizedBox(
+        width: 84,
+        child: _OptionTile(
+          icon: icon,
+          label: label,
+          value: value,
+          onTap: onTap,
+        ),
+      ),
+    );
   }
 }
 
@@ -839,24 +937,144 @@ class _AnimationStrip extends StatelessWidget {
 
     return SizedBox(
       height: 38,
-      child: ListView.separated(
+      child: ListView(
         scrollDirection: Axis.horizontal,
-        itemCount: character.animations.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final clip = character.animations[index];
-          final selected = viewer.currentAnimationName == clip.name;
-          return _AnimationChip(
-            clip: clip,
-            selected: selected,
-            onTap: () {
-              final library = context.read<LibraryProvider>();
-              viewer.playAnimation(character.serverModelPath, clip.name,
-                  loop: viewer.loop);
-              library.recordUsage(character, clip.name);
-            },
-          );
-        },
+        children: [
+          // ---- standard actions (enabled when mapped, disabled "—") ----
+          for (final action in StandardAction.all)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _StandardChip(
+                action: action,
+                clipName: character.animationMapping[action],
+                selected: _isStandardSelected(action),
+                onTap: () => _playStandard(context, action),
+              ),
+            ),
+          // ---- divider + every detected clip ----
+          Container(
+            width: 1,
+            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+            color: AppColors.stroke,
+          ),
+          for (final clip in character.animations)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _AnimationChip(
+                clip: clip,
+                selected: viewer.currentAnimationName == clip.name,
+                onTap: () {
+                  final library = context.read<LibraryProvider>();
+                  viewer.playAnimation(character.serverModelPath, clip.name,
+                      loop: viewer.loop);
+                  library.recordUsage(character, clip.name);
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  bool _isStandardSelected(String action) {
+    final mapped = character.animationMapping[action];
+    return mapped != null && mapped == viewer.currentAnimationName;
+  }
+
+  void _playStandard(BuildContext context, String action) {
+    final clip = character.clipForAction(action);
+    if (clip == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '${StandardAction.label(action)} animation is not available for this character.'),
+          action: SnackBarAction(
+            label: 'Use another',
+            onPressed: () => Navigator.of(context).push(
+              fadeSlideRoute(ActionSelectScreen(characterId: character.id)),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    final library = context.read<LibraryProvider>();
+    viewer.playAnimation(character.serverModelPath, clip.name, loop: viewer.loop);
+    library.recordUsage(character, clip.name);
+  }
+}
+
+/// Standard action chip: ✓ when mapped, "—" when unavailable.
+class _StandardChip extends StatelessWidget {
+  const _StandardChip({
+    required this.action,
+    required this.clipName,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String action;
+  final String? clipName;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = clipName != null && clipName!.isNotEmpty;
+    return Semantics(
+      label:
+          '${StandardAction.label(action)} ${enabled ? 'play' : 'not available for this character'}',
+      button: true,
+      enabled: enabled,
+      selected: selected,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          decoration: BoxDecoration(
+            color: !enabled
+                ? AppColors.surfaceAlt
+                : selected
+                    ? AppColors.accent
+                    : AppColors.accentSoft,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: !enabled
+                  ? AppColors.stroke
+                  : selected
+                      ? AppColors.accent
+                      : AppColors.stroke,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                enabled ? Icons.check_rounded : Icons.remove_rounded,
+                size: 14,
+                color: !enabled
+                    ? AppColors.textMuted
+                    : selected
+                        ? const Color(0xFF0A0C11)
+                        : AppColors.accent,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                StandardAction.label(action),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: !enabled
+                      ? AppColors.textMuted
+                      : selected
+                          ? const Color(0xFF0A0C11)
+                          : AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

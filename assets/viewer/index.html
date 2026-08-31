@@ -19,16 +19,32 @@
     --progress-bar-color: transparent;
     --progress-mask: transparent;
   }
+  /* Perspective floor grid overlay (toggled from Dart) */
+  #grid-overlay {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 46%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 220ms ease;
+    background:
+      repeating-linear-gradient(0deg,
+        rgba(123,155,255,0.16) 0 1px, transparent 1px 44px),
+      repeating-linear-gradient(90deg,
+        rgba(123,155,255,0.16) 0 1px, transparent 1px 44px);
+    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+    mask-image: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+  }
+  #grid-overlay.visible { opacity: 1; }
 </style>
 <!-- The 3D engine is served from the on-device loopback server — fully offline. -->
 <script type="module" src="/viewer/model-viewer.min.js"></script>
 </head>
 <body>
+<div id="grid-overlay"></div>
 <model-viewer
   id="mv"
   camera-controls
-  disable-pan
-  disable-tap
   touch-action="none"
   interaction-prompt="none"
   environment-image="neutral"
@@ -38,7 +54,7 @@
 <script>
 (function () {
   const mv = document.getElementById('mv');
-  let bridgeReady = false;
+  const grid = document.getElementById('grid-overlay');
   let lastTap = 0;
   let loaded = false;
   let loopEnabled = true;
@@ -69,7 +85,7 @@
     post({ type: 'error' });
   });
 
-  // ---- playback ticker -------------------------------------------------
+  // ---- playback ticker ---------------------------------------------------
   setInterval(() => {
     if (!loaded) return;
     let t = 0, d = 0;
@@ -78,7 +94,7 @@
     post({ type: 'tick', time: t, duration: d });
   }, 200);
 
-  // ---- gestures ---------------------------------------------------------
+  // ---- gestures -----------------------------------------------------------
   function resetCamera() {
     try {
       mv.cameraOrbit = '0deg 75deg auto';
@@ -92,7 +108,7 @@
     lastTap = now;
   });
 
-  // ---- command API (called from Dart) -----------------------------------
+  // ---- command API (called from Dart) --------------------------------------
   function ready(fn) {
     Promise.all([
       new Promise((r) => { if (document.readyState === 'complete') r(); else window.addEventListener('load', r); }),
@@ -106,9 +122,9 @@
   window.studio = {
     setModel: (url) => { loaded = false; withMv((m) => { try { m.pause(); } catch (e) {}; m.removeAttribute('poster'); m.src = url; }); },
     setAnimation: (name) => withMv((m) => { m.animationName = name || null; }),
-    play: () => withMv((m) => { m.loop = loopEnabled; m.play({ repetitions: Infinity }); }),
+    play: () => withMv((m) => { m.loop = loopEnabled; m.play({ repetitions: loopEnabled ? Infinity : 1 }); }),
     pause: () => withMv((m) => { m.pause(); }),
-    restart: () => withMv((m) => { m.currentTime = 0; m.loop = loopEnabled; m.play({ repetitions: Infinity }); }),
+    restart: () => withMv((m) => { m.currentTime = 0; m.loop = loopEnabled; m.play({ repetitions: loopEnabled ? Infinity : 1 }); }),
     stop: () => withMv((m) => { m.pause(); m.currentTime = 0; }),
     setLoop: (v) => { loopEnabled = !!v; withMv((m) => { m.loop = !!v; }); },
     setSpeed: (v) => withMv((m) => { m.timeScale = Number(v) || 1; }),
@@ -116,6 +132,12 @@
     setAutoRotate: (v) => withMv((m) => { m.autoRotate = !!v; m.autoRotateDelay = 0; }),
     setOrbit: (o) => withMv((m) => { m.cameraOrbit = o; }),
     resetCamera: () => { resetCamera(); },
+    // Pan / zoom / rotate interaction toggles (rotate is always available).
+    setPanEnabled: (v) => withMv((m) => {
+      if (v) m.removeAttribute('disable-pan');
+      else m.setAttribute('disable-pan', '');
+    }),
+    setGrid: (v) => { if (grid) grid.classList.toggle('visible', !!v); },
     setLighting: (exposure, shadow, softness) => withMv((m) => {
       m.exposure = Number(exposure);
       m.shadowIntensity = Number(shadow);
@@ -145,7 +167,7 @@
 
   // Announce the bridge as soon as the custom element is upgraded so early
   // Dart commands are never dropped.
-  ready(() => { bridgeReady = true; post({ type: 'pageReady' }); });
+  ready(() => { post({ type: 'pageReady' }); });
 })();
 </script>
 </body>

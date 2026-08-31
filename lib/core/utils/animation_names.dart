@@ -1,12 +1,14 @@
-/// Animation-name normalization.
+/// Animation-name normalization + standard-action detection.
 ///
 /// Real-world GLB files name their clips in wildly different ways:
 ///   "Walk", "walk", "WALK", "walking", "Walk_01", "walk_cycle",
 ///   "Armature|mixamo.com|Take 001|Walk" ...
 ///
-/// This utility converts those raw clip identifiers into:
-///   - [NormalizedAnimation.display]  → friendly label for the UI
-///   - [NormalizedAnimation.canonical]→ stable key for icons/search/history
+/// This utility provides:
+///  - [AnimationNames.normalize]  → friendly display labels (generic)
+///  - [StandardActionMatcher]     → the 6 required actions (Stand, Walk,
+///    Run, Sit, Sleep, Talk) detected via alias tables with a confidence
+///    score, so nothing is claimed to exist when it doesn't.
 ///
 /// The *original* clip identifier is always preserved in the model so the
 /// viewer can address the exact clip inside the GLB.
@@ -29,10 +31,193 @@ class NormalizedAnimation {
   final bool known;
 }
 
+// ======================================================================
+// Required / standard action system
+// ======================================================================
+
+/// The six standard actions every character maps against.
+class StandardAction {
+  static const stand = 'stand';
+  static const walk = 'walk';
+  static const run = 'run';
+  static const sit = 'sit';
+  static const sleep = 'sleep';
+  static const talk = 'talk';
+
+  static const List<String> all = [stand, walk, run, sit, sleep, talk];
+
+  static String label(String key) => switch (key) {
+        stand => 'Stand',
+        walk => 'Walk',
+        run => 'Run',
+        sit => 'Sit',
+        sleep => 'Sleep',
+        talk => 'Talk',
+        _ => key,
+      };
+}
+
+/// One action-detection candidate for a clip.
+class ActionCandidate {
+  const ActionCandidate({
+    required this.action,
+    required this.clipName,
+    required this.confidence,
+  });
+  final String action;
+  final String clipName;
+  final double confidence;
+}
+
+/// Alias-based, case-insensitive, separator/digit-insensitive matcher for
+/// the six standard actions.
+class StandardActionMatcher {
+  const StandardActionMatcher();
+
+  /// Aliases are matched against fully normalized names (lowercase,
+  /// alphanumeric only, trailing numbers stripped).
+  static const Map<String, List<String>> aliases = {
+    StandardAction.stand: [
+      'stand', 'standing', 'standup', 'idle', 'idling', 'defaultidle',
+      'standby', 'default', 'neutral', 'apose', 'tpose', 'breathing',
+      'wait', 'waiting', 'bored', 'idlepose',
+    ],
+    StandardAction.walk: [
+      'walk', 'walking', 'walkcycle', 'locomotionwalk', 'locomotion',
+      'walkinplace', 'walkfwd', 'walkforward', 'walkslow',
+    ],
+    StandardAction.run: [
+      'run', 'running', 'runcycle', 'sprint', 'sprinting', 'jog',
+      'jogging', 'runinplace', 'runfwd', 'fastwalk',
+    ],
+    StandardAction.sit: [
+      'sit', 'sitting', 'sitidle', 'sitdown', 'seated', 'chair', 'sitchair',
+    ],
+    StandardAction.sleep: [
+      'sleep', 'sleeping', 'lay', 'lying', 'lie', 'liedown', 'laydown',
+      'rest', 'resting', 'asleep',
+    ],
+    StandardAction.talk: [
+      'talk', 'talking', 'speak', 'speaking', 'conversation', 'talkingphone',
+      'chat', 'chatting', 'gossip',
+    ],
+  };
+
+  /// Minimum confidence to auto-map an action without user confirmation.
+  static const double autoMapThreshold = 0.75;
+
+  /// Minimum confidence to *suggest* an action (⚠️ candidate, user confirms).
+  static const double suggestThreshold = 0.40;
+
+  /// Normalize a raw clip name for matching.
+  /// "Walk_Cycle_01" → "walkcycle", "walk-cycle" → "walkcycle".
+  static String normalize(String raw) {
+    // Strip mixamo-style prefixes: "Armature|mixamo.com|Take 001|Walk"
+    var source = raw.trim();
+    if (source.contains('|')) {
+      final parts = source
+          .split('|')
+          .map((p) => p.trim())
+          .where((p) => p.isNotEmpty && p.toLowerCase() != 'mixamo.com');
+      source = parts.isNotEmpty ? parts.last : source;
+    }
+    var s = source.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    // Strip trailing numbers: idle01 → idle, take001 → take
+    s = s.replaceAll(RegExp(r'\d+$'), '');
+    // Strip a leading generation number if any
+    s = s.replaceAll(RegExp(r'^\d+'), '');
+    return s;
+  }
+
+  /// Confidence for one alias against one normalized clip name.
+  static double _score(String alias, String normalized) {
+    if (normalized.isEmpty) return 0;
+    if (normalized == alias) return 0.98; // "Walk_Cycle" → Walk → 98%
+    if (normalized.startsWith(alias)) return 0.90; // "walkcycle"… wait, equal
+    if (alias.length >= 6 && normalized.contains(alias)) {
+      return 0.71; // "humanlocomotion" ⊃ "locomotion" → 71%
+    }
+    if (alias.length >= 4 && normalized.contains(alias)) return 0.65;
+    return 0;
+  }
+
+  /// Best action candidate for one clip (may be null when nothing matches).
+  ActionCandidate? candidateForClip(String clipName) {
+    final normalized = normalize(clipName);
+    ActionCandidate? best;
+    for (final entry in aliases.entries) {
+      for (final alias in entry.value) {
+        final c = _score(alias, normalized);
+        if (c > 0 && (best == null || c > best.confidence)) {
+          best = ActionCandidate(
+            action: entry.key,
+            clipName: clipName,
+            confidence: c,
+          );
+        }
+      }
+    }
+    return best;
+  }
+
+  /// Best clip candidate for one action across all clips in the model.
+  ActionCandidate? bestClipFor(
+      String action, List<String> clipNames) {
+    ActionCandidate? best;
+    for (final clip in clipNames) {
+      final normalized = normalize(clip);
+      for (final alias in aliases[action] ?? const <String>[]) {
+        final c = _score(alias, normalized);
+        if (c > 0 && (best == null || c > best.confidence)) {
+          best = ActionCandidate(action: action, clipName: clip, confidence: c);
+        }
+      }
+    }
+    return best;
+  }
+
+  /// Full detection pass → auto mapping (≥ autoMapThreshold) and
+  /// suggestions (≥ suggestThreshold) per standard action.
+  StandardDetection detect(List<String> clipNames) {
+    final mapped = <String, ActionCandidate>{};
+    final suggested = <String, ActionCandidate>{};
+
+    for (final action in StandardAction.all) {
+      final best = bestClipFor(action, clipNames);
+      if (best == null) continue;
+
+      // Avoid mapping the same clip to two different actions when a better
+      // assignment exists for it (first action wins by higher confidence).
+      final alreadyUsed = mapped.values.any((c) => c.clipName == best.clipName);
+      if (best.confidence >= autoMapThreshold && !alreadyUsed) {
+        mapped[action] = best;
+      } else if (best.confidence >= suggestThreshold) {
+        suggested[action] = best;
+      }
+    }
+    return StandardDetection(mapped: mapped, suggested: suggested);
+  }
+}
+
+/// Result of the standard-action detection pass.
+class StandardDetection {
+  const StandardDetection({required this.mapped, required this.suggested});
+
+  /// action → high-confidence auto-mapped clip.
+  final Map<String, ActionCandidate> mapped;
+
+  /// action → low-confidence candidate requiring user confirmation.
+  final Map<String, ActionCandidate> suggested;
+}
+
+// ======================================================================
+// Generic display-name normalization (library-wide, all clips)
+// ======================================================================
+
 class AnimationNames {
   AnimationNames._();
 
-  /// Canonical action -> list of raw-name fragments that map to it.
+  /// Canonical action -> raw-name fragments for friendly display.
   static const Map<String, List<String>> _canonicalMap = {
     'idle': ['idle', 'idling', 'breathing', 'standby', 'default', 'a_pose', 'tpose', 't_pose'],
     'walk': ['walk', 'walking', 'walkinplace', 'walkin_place', 'walkcycle'],
@@ -72,7 +257,6 @@ class AnimationNames {
     'survey': ['survey', 'surveying', 'look', 'looking', 'lookaround', 'scan'],
   };
 
-  /// Canonical key -> display label (all simple Title Case).
   static final Map<String, String> _canonicalDisplay = {
     for (final e in _canonicalMap.keys) e: _titleOf(e),
   };
@@ -90,7 +274,7 @@ class AnimationNames {
     '08', '09', '10', '1', '2', '3', '4', '5', '00', '0001',
   };
 
-  /// Normalize a raw clip name from a GLB file.
+  /// Normalize a raw clip name from a GLB file into a friendly label.
   static NormalizedAnimation normalize(String raw, {int fallbackIndex = 1}) {
     var source = raw.trim();
 
@@ -116,7 +300,7 @@ class AnimationNames {
       return NormalizedAnimation(display: display, canonical: 'animation_$fallbackIndex', known: false);
     }
 
-    // 1) Exact compact match ("walking" → walk? handled by contains below)
+    // 1) Exact compact match
     for (final entry in _canonicalMap.entries) {
       for (final fragment in entry.value) {
         if (compact == fragment) {
@@ -129,7 +313,7 @@ class AnimationNames {
       }
     }
 
-    // 2) Prefix match ("walkcycle", "walkinplace", "runfwd" ...)
+    // 2) Prefix match ("walkcycle", "walkinplace"…)
     for (final entry in _canonicalMap.entries) {
       for (final fragment in entry.value) {
         if (fragment.length >= 4 && compact.startsWith(fragment)) {
@@ -142,7 +326,7 @@ class AnimationNames {
       }
     }
 
-    // 3) Token match ("walk_fast", "run-left", "Sword Attack" ...)
+    // 3) Token match ("walk_fast", "Sword Attack"…)
     final tokens = source
         .toLowerCase()
         .split(RegExp(r'[^a-z0-9]+'))
@@ -160,7 +344,7 @@ class AnimationNames {
       }
     }
 
-    // 4) Unknown clip → prettified display ("ZombieAttackSlow" → "Zombie Attack Slow")
+    // 4) Unknown clip → prettified display
     final spaced = source
         .replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (m) => '${m[1]} ${m[2]}')
         .replaceAll(RegExp(r'[_\-.]+'), ' ')

@@ -48,33 +48,35 @@ jobs:
       - name: Rename APK
         run: |
           cp build/app/outputs/flutter-apk/app-release.apk \
-             CharacterStudio3D-v1.0.0.apk
-          ls -lh CharacterStudio3D-v1.0.0.apk
+             CharacterStudio3D-v1.1.0.apk
+          ls -lh CharacterStudio3D-v1.1.0.apk
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CharacterStudio3D-apk
-          path: CharacterStudio3D-v1.0.0.apk
+          name: CharacterStudio3D-apk-v1-1-0
+          path: CharacterStudio3D-v1.1.0.apk
           retention-days: 90
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: Character Studio 3D v1.0.0
+          tag_name: v1.1.0
+          name: Character Studio 3D v1.1.0
           body: |
-            **Character Studio 3D** — offline 3D character animation & preview studio.
+            **Character Studio 3D v1.1.0** — offline 3D character animation & preview studio.
 
-            - Browse, import and animate GLB characters fully on-device
-            - Automatic animation detection from any GLB
-            - Interactive 3D viewer (rotate / zoom / double-tap reset)
-            - Favorites, Recently Used, Projects — all persisted locally
+            - Character library: built-in + imported sections, search/sort, favorites, recently used
+            - GLB/GLTF import with staged pipeline, validation & skeleton/rig detection
+            - Animation alias detection with confidence scores + manual mapping editor
+            - Humanoid bone detection (mixamo/Blender/UE naming) + bone mapping UI
+            - Interactive 3D viewer: rotate/zoom/pan, grid, lighting, backgrounds, fullscreen
+            - Standard actions (Stand/Walk/Run/Sit/Sleep/Talk) with honest missing-state handling
             - Real video export via on-device screen recording (MediaProjection)
 
-            **Install:** download `CharacterStudio3D-v1.0.0.apk` below, allow
+            **Install:** download `CharacterStudio3D-v1.1.0.apk` below, allow
             "install unknown apps" if prompted, and open it. Signed with a debug
             key — safe for testing/sideloading.
-          files: CharacterStudio3D-v1.0.0.apk
+          files: CharacterStudio3D-v1.1.0.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

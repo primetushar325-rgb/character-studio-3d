@@ -4,7 +4,7 @@ class AppConstants {
 
   static const String appName = 'Character Studio 3D';
   static const String appTagline = 'Create. Animate. Preview.';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.1.0';
 
   // Native method channel
   static const String nativeChannel = 'app.characterstudio/native';

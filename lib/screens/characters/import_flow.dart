@@ -1,224 +1,146 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../services/character_service.dart';
+import '../../services/native_picker_service.dart';
 import '../../state/library_provider.dart';
 import '../../widgets/premium_button.dart';
 import '../../widgets/premium_dialog.dart';
-import '../player/player_screen.dart';
+import 'import_review_screen.dart';
 
-/// Opens the Android system file picker (Storage Access Framework) and runs
-/// the full import pipeline: validate → copy/convert → parse → metadata →
-/// success/error feedback. Real import, no permissions required.
+/// Opens the Android system file picker and runs the staged import pipeline:
+/// validate → parse → skeleton → animations → preview → review screen.
+///
+/// Picker strategy (no storage permissions needed):
+///   1. Cross-platform file picker with .glb/.gltf (+ resource) filtering.
+///   2. If it fails or returns no usable path → native ACTION_OPEN_DOCUMENT
+///      fallback with glTF MIME filtering.
 Future<void> startImportFlow(BuildContext context) async {
   final scaffoldContext = context;
-  FilePickerResult? result;
-  try {
-    result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      // .gltf + .bin + textures may be multi-selected for glTF imports.
-      allowedExtensions: ['glb', 'gltf', 'bin', 'png', 'jpg', 'jpeg', 'webp'],
-      allowMultiple: true,
-      withData: false,
-    );
-  } catch (_) {
-    if (scaffoldContext.mounted) {
-      _showImportError(
-        scaffoldContext,
-        'The file picker could not be opened. Please try again.',
-      );
-    }
-    return;
-  }
 
-  final files = result?.files ?? const <PlatformFile>[];
-  if (files.isEmpty) return; // user cancelled — not an error
+  // ---- 1) pick files -----------------------------------------------------
+  final paths = await _pickModelFiles(scaffoldContext);
+  if (paths == null || paths.isEmpty) return; // cancelled / nothing usable
   if (!scaffoldContext.mounted) return;
 
   final library = scaffoldContext.read<LibraryProvider>();
 
-  // Show a loading overlay while parsing/copying.
+  // ---- 2) staged progress UI ----------------------------------------------
+  final stageNotifier = ValueNotifier<ImportStage>(ImportStage.reading);
   showDialog<void>(
     context: scaffoldContext,
     barrierDismissible: false,
     barrierColor: Colors.black54,
-    builder: (_) => const _ImportProgressDialog(),
+    builder: (_) => _ImportProgressDialog(stage: stageNotifier),
   );
 
-  final outcome = await library.repository.importFromPicker(files);
+  final result = await library.stageImport(
+    paths,
+    onStage: (stage) => stageNotifier.value = stage,
+  );
 
   if (!scaffoldContext.mounted) return;
   Navigator.of(scaffoldContext, rootNavigator: true).pop(); // close progress
 
-  if (outcome.success && outcome.character != null) {
-    final character = outcome.character!;
-    // refresh the library list
-    await library.reloadAfterImport();
-    if (scaffoldContext.mounted) {
-      await showPremiumDialog<void>(
-        scaffoldContext,
-        _ImportSuccessDialog(
-          characterName: character.displayName,
-          animationCount: character.animationCount,
-          warnings: outcome.warnings,
-          onOpen: () => Navigator.of(scaffoldContext).pop(),
-          onAnimate: () {
-            Navigator.of(scaffoldContext).pop();
-            Navigator.of(scaffoldContext).push(
-              PageRouteBuilder(
-                pageBuilder: (_, __, ___) => PlayerScreen(
-                  characterId: character.id,
-                  initialAnimationName:
-                      character.animations.isNotEmpty ? character.animations.first.name : null,
-                ),
-                transitionsBuilder: (_, anim, __, child) =>
-                    FadeTransition(opacity: anim, child: child),
-              ),
-            );
-          },
+  // ---- 3) route the outcome -------------------------------------------------
+  if (result is StagedImport) {
+    Navigator.of(scaffoldContext).push(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => ImportReviewScreen(staged: result),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+          child: child,
         ),
-      );
-    }
-  } else {
-    if (scaffoldContext.mounted) {
-      _showImportError(
-          scaffoldContext, outcome.errorMessage ?? 'Unable to load this character.');
-    }
-  }
-}
-
-void _showImportError(BuildContext context, String message) {
-  showPremiumDialog<void>(
-    context,
-    _ImportErrorDialog(message: message),
-  );
-}
-
-class _ImportProgressDialog extends StatelessWidget {
-  const _ImportProgressDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(26),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: AppColors.stroke),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(
-              width: 34,
-              height: 34,
-              child: CircularProgressIndicator(strokeWidth: 2.6),
-            ),
-            const SizedBox(height: 18),
-            Text('Importing Character…',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 6),
-            Text(
-              'Validating model and detecting animations',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
+  } else if (result is ImportOutcome) {
+    showPremiumDialog<void>(
+      scaffoldContext,
+      PremiumDialog(
+        title: '❌ Invalid GLB file',
+        message: result.errorMessage ??
+            'This 3D model could not be loaded. Please choose a valid '
+            'GLB/GLTF character.',
+        icon: Icons.error_outline_rounded,
+        iconColor: AppColors.danger,
+        actions: [
+          PremiumTextButton(
+              label: 'Close', onPressed: () => Navigator.of(scaffoldContext).pop()),
+          PremiumButton(
+            label: 'Try Again',
+            small: true,
+            icon: Icons.refresh_rounded,
+            onPressed: () {
+              Navigator.of(scaffoldContext).pop();
+              startImportFlow(scaffoldContext);
+            },
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ImportSuccessDialog extends StatelessWidget {
-  const _ImportSuccessDialog({
-    required this.characterName,
-    required this.animationCount,
-    required this.warnings,
-    this.onOpen,
-    this.onAnimate,
-  });
-
-  final String characterName;
-  final int animationCount;
-  final List<String> warnings;
-  final VoidCallback? onOpen;
-  final VoidCallback? onAnimate;
-
-  @override
-  Widget build(BuildContext context) {
-    return _OutcomeDialog(
-      icon: Icons.check_circle_rounded,
-      iconColor: AppColors.success,
-      title: 'Character Imported',
-      message: '$characterName has been added successfully.',
-      details: [
-        '$animationCount ${animationCount == 1 ? 'animation' : 'animations'} detected',
-        ...warnings,
-      ],
-      actions: [
-        PremiumTextButton(label: 'Open', onPressed: onOpen),
-        PremiumButton(
-          label: 'Animate',
-          onPressed: onAnimate,
-          style: PremiumButtonStyle.primary,
-          small: true,
-          icon: Icons.play_arrow_rounded,
-        ),
-      ],
+/// Returns absolute paths of picked model files, or null/empty on cancel.
+Future<List<String>?> _pickModelFiles(BuildContext context) async {
+  // ---- primary: cross-platform picker with extension filtering ----------
+  try {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['glb', 'gltf', 'bin', 'png', 'jpg', 'jpeg', 'webp'],
+      allowMultiple: true,
+      withData: false,
     );
+    final paths = <String>[
+      for (final f in result?.files ?? const <PlatformFile>[])
+        if (f.path != null && f.path!.isNotEmpty) f.path!
+    ];
+    if (paths.isNotEmpty) return paths;
+    // Empty result with no exception = user closed the dialog.
+    if (result != null) return const [];
+  } catch (_) {
+    // fall through to the native picker
+  }
+
+  // ---- fallback: native ACTION_OPEN_DOCUMENT with MIME filtering --------
+  try {
+    final picked = await NativePickerService.pickModelFile();
+    if (picked == null) return const [];
+    return [picked.path];
+  } on Exception catch (e) {
+    if (!context.mounted) return const [];
+    showPremiumDialog<void>(
+      context,
+      PremiumDialog(
+        title: 'File picker unavailable',
+        message: e is PlatformException
+            ? (e.message ?? 'The file picker could not be opened on this device.')
+            : 'The file picker could not be opened on this device. Please try again.',
+        icon: Icons.folder_off_rounded,
+        iconColor: AppColors.danger,
+        actions: [
+          PremiumButton(
+            label: 'Close',
+            small: true,
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+    return const [];
   }
 }
 
-class _ImportErrorDialog extends StatelessWidget {
-  const _ImportErrorDialog({required this.message});
+/// Staged progress dialog: "Reading file → Loading 3D model → Checking
+/// skeleton → Checking animations → Preparing preview".
+class _ImportProgressDialog extends StatelessWidget {
+  const _ImportProgressDialog({required this.stage});
 
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return _OutcomeDialog(
-      icon: Icons.error_outline_rounded,
-      iconColor: AppColors.danger,
-      title: 'Unable to load this character',
-      message: message,
-      actions: [
-        PremiumTextButton(
-          label: 'Close',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        PremiumButton(
-          label: 'Try Again',
-          onPressed: () {
-            Navigator.of(context).pop();
-            startImportFlow(context);
-          },
-          small: true,
-        ),
-      ],
-    );
-  }
-}
-
-/// Shared styled dialog for import outcomes.
-class _OutcomeDialog extends StatelessWidget {
-  const _OutcomeDialog({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.message,
-    this.details = const [],
-    required this.actions,
-  });
-
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String message;
-  final List<String> details;
-  final List<Widget> actions;
+  final ValueNotifier<ImportStage> stage;
 
   @override
   Widget build(BuildContext context) {
@@ -229,78 +151,92 @@ class _OutcomeDialog extends StatelessWidget {
         side: const BorderSide(color: AppColors.stroke),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              width: 58,
-              height: 58,
-              alignment: Alignment.center,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: iconColor.withOpacity(0.12),
-                border: Border.all(color: iconColor.withOpacity(0.35)),
-              ),
-              child: Icon(icon, color: iconColor, size: 28),
-            ),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            if (details.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.stroke),
+        padding: const EdgeInsets.fromLTRB(24, 26, 24, 20),
+        child: ValueListenableBuilder<ImportStage>(
+          valueListenable: stage,
+          builder: (context, current, _) {
+            final currentIndex = current.index;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(strokeWidth: 2.8),
                 ),
-                child: Column(
-                  children: [
-                    for (final d in details)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            Icon(Icons.info_outline_rounded,
-                                size: 14,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                d,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 18),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              children: actions,
-            ),
-          ],
+                const SizedBox(height: 20),
+                Text('Importing Character…',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                for (final s in ImportStage.values)
+                  _StageRow(
+                    label: s.label,
+                    state: s.index < currentIndex
+                        ? _StageState.done
+                        : s.index == currentIndex
+                            ? _StageState.active
+                            : _StageState.pending,
+                  ),
+              ],
+            );
+          },
         ),
+      ),
+    );
+  }
+}
+
+enum _StageState { pending, active, done }
+
+class _StageRow extends StatelessWidget {
+  const _StageRow({required this.label, required this.state});
+
+  final String label;
+  final _StageState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color;
+    final IconData icon;
+    switch (state) {
+      case _StageState.done:
+        color = AppColors.success;
+        icon = Icons.check_circle_rounded;
+      case _StageState.active:
+        color = AppColors.accent;
+        icon = Icons.radio_button_checked_rounded;
+      case _StageState.pending:
+        color = AppColors.textMuted;
+        icon = Icons.radio_button_unchecked_rounded;
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: state == _StageState.active
+                ? CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  )
+                : Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight:
+                  state == _StageState.pending ? FontWeight.w600 : FontWeight.w800,
+              color: state == _StageState.pending
+                  ? AppColors.textMuted
+                  : AppColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

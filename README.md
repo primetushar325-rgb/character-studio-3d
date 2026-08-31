@@ -70,23 +70,99 @@ Bundled samples in this repo (both legal, redistribution-friendly):
 
 ## 3. How users import GLB files
 
-**Characters → Import GLB** (or Home → Quick Actions → Import GLB):
+**Characters → Import** (or Home → Quick Actions → Import GLB):
 
 1. The Android **system file picker** opens (Storage Access Framework — no
-   storage permission required).
-2. Select a `.glb` (or a `.gltf` **together with** its `.bin` + texture files).
-3. The app validates the file (magic bytes, glTF version, chunk structure,
-   250 MB limit), converts `.gltf` → self-contained `.glb` if needed, copies
-   it into `documents/characters/`, parses animation clips, and registers it
-   in the library — including a sibling thumbnail if you picked
-   `model.png` alongside `model.glb`.
-4. A success dialog reports the detected animation count; failures show a
-   specific, honest error (e.g. missing `.bin`, truncated file, not a GLB).
+   storage permission required), filtered for `.glb` / `.gltf`
+   (`model/gltf-binary`, `model/gltf+json`). If the cross-platform picker
+   cannot return a path, the app falls back to a native
+   **ACTION_OPEN_DOCUMENT** intent with the same MIME filtering.
+2. Select a `.glb` (or a `.gltf` **together with** its `.bin` + textures).
+3. The staged pipeline runs with live progress
+   (*Reading file → Loading 3D model → Checking skeleton → Checking
+   animations → Preparing preview*): magic-byte/chunk validation, glTF 2.0
+   check, size limits, `.gltf`→GLB conversion, skeleton/bone extraction.
+4. The **Character Validation** screen opens: live 3D preview, ✅/⚠️/❌
+   validation report, the Animation Status table
+   (Stand/Walk/Run/Sit/Sleep/Talk → Found/Missing/Not Found with confidence),
+   manual mapping dropdowns, bone mapping, and **Save Character / Discard**.
+5. Saving generates a `char_<timestamp>` id, copies the model into
+   `documents/characters/`, stores full metadata + mapping, and the character
+   appears in the **Imported Characters** section immediately.
+
+Discarding removes every temporary file. Failures show friendly messages
+(e.g. "❌ Invalid GLB file — This 3D model could not be loaded…") with Retry.
 
 Imported characters are ordinary files in the characters directory, so they
 are discovered automatically on every launch — `dragon.glb`, `boy.glb`,
 `monster.glb` … all work with **zero code changes** (Meshy/mixamo/Blender
 exports with named clips are fully supported).
+
+### Animation detection & confidence
+
+The six required actions are detected via alias tables with normalization
+(case-insensitive, separators & trailing numbers stripped) and scored:
+
+| Clip name in GLB | Detected as | Confidence |
+|---|---|---|
+| `Walk_Cycle` | Walk | 98% (auto-mapped) |
+| `Walk_Cycle_01`, `walk-cycle`, `Walking` | Walk | auto-mapped |
+| `Human_Locomotion_02` | Walk | 71% (suggestion — user confirms) |
+| `Idle`, `idle_01`, `default_idle`, `Standing` | Stand | auto-mapped |
+| unknown (`Zombie Roar`) | — | never mapped |
+
+Auto-mapping requires ≥ 75% confidence; 40–75% becomes a "⚠️ Missing"
+suggestion the user can accept with one tap (*Use?*) or remap manually.
+Missing actions are disabled in the UI with the honest message
+"*Walk animation is not available for this character*" — nothing is faked.
+
+### Skeleton / humanoid detection
+
+The parser extracts skins → joints (bone names, count, hierarchy depth) and
+the humanoid detector matches the 17 standard bones against mixamo
+(`mixamorig:LeftArm`), Blender (`upper_arm.L`), Unreal (`upperarm_l`) and
+glTF-standard naming. Results appear in the validation report and can be
+reviewed/overridden in the **Bone Mapping** sheet. (Runtime animation
+*retargeting* between different skeletons is not performed by the rendering
+engine — the mapping powers detection, validation and future tooling.)
+
+### Where characters are saved
+
+```
+<app documents>/characters/        ← library models + sibling thumbnails
+<app documents>/characters_pending/ ← staged imports awaiting Save/Discard
+SharedPreferences                   ← metadata (charId, name, mapping,
+                                       bones, favorites, recents, settings)
+```
+
+Every character's metadata follows this structure (persisted locally):
+
+```json
+{
+  "id": "char_172839482", "name": "Farmer", "source": "imported",
+  "fileName": "farmer.glb", "modelPath": "…", "thumbnailPath": "…",
+  "hasSkeleton": true, "boneCount": 52, "animations": [],
+  "animationMapping": { "stand": "…", "walk": "…", "run": "…",
+                        "sit": "…", "sleep": "…", "talk": "…" },
+  "boneMapping": { "hips": "mixamorig:Hips", "head": "mixamorig:Head" },
+  "createdAt": "…", "updatedAt": "…"
+}
+```
+
+### Library management
+
+The Characters screen groups **Recently Used → Built-in → Imported** with
+readiness badges (🟢 Ready / 🟡 Partial / 🔴 Invalid), bone counts, imported
+dates, search (names + animations), filters, 5 sort modes, and per-card
+Details / Rename / **Duplicate** / Share / Delete. Duplicate copies the GLB +
+thumbnail with fresh metadata and a new `charId`.
+
+### 3D preview upgrades
+
+Rotate (1 finger) · zoom (pinch) · pan (2 fingers, toggleable) · double-tap
+reset · auto-rotate · studio floor grid · 5 lighting presets · 6 backgrounds
+with custom color picker · fullscreen mode. Characters are auto-centered and
+framed via the engine's bounding-box camera.
 
 ---
 

@@ -17,6 +17,7 @@ class ViewerServerService {
 
   HttpServer? _server;
   Directory? _charactersDir;
+  Directory? _pendingDir;
   int _port = 0;
 
   int get port => _port;
@@ -24,6 +25,10 @@ class ViewerServerService {
 
   void configureCharactersDirectory(Directory dir) {
     _charactersDir = dir;
+  }
+
+  void configurePendingDirectory(Directory dir) {
+    _pendingDir = dir;
   }
 
   Future<int> start() async {
@@ -64,7 +69,22 @@ class ViewerServerService {
       }
 
       if (path.startsWith('/models/')) {
-        await _serveModel(path, response);
+        await _serveModel(
+          path: path,
+          baseRoute: '/models/',
+          dir: _charactersDir,
+          response: response,
+        );
+        return;
+      }
+
+      if (path.startsWith('/pending/')) {
+        await _serveModel(
+          path: path,
+          baseRoute: '/pending/',
+          dir: _pendingDir,
+          response: response,
+        );
         return;
       }
 
@@ -78,15 +98,19 @@ class ViewerServerService {
     }
   }
 
-  Future<void> _serveModel(String path, HttpResponse response) async {
-    final dir = _charactersDir;
+  Future<void> _serveModel({
+    required String path,
+    required String baseRoute,
+    required Directory? dir,
+    required HttpResponse response,
+  }) async {
     if (dir == null) {
       response.statusCode = HttpStatus.notFound;
       await response.close();
       return;
     }
-    final name = Uri.decodeComponent(path.substring('/models/'.length));
-    // Security: reject anything that tries to escape the characters dir.
+    final name = Uri.decodeComponent(path.substring(baseRoute.length));
+    // Security: reject anything that tries to escape the model directory.
     if (name.contains('/') || name.contains('\\') || name.contains('..')) {
       response.statusCode = HttpStatus.forbidden;
       await response.close();

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart' as sharing;
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/animation_names.dart';
 import '../../core/utils/formatters.dart';
 import '../../models/character.dart';
 import '../../models/viewer_enums.dart';
@@ -11,6 +12,7 @@ import '../../state/settings_provider.dart';
 import '../../widgets/animation_card.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/mapping_editor.dart';
 import '../../widgets/micro_animations.dart';
 import '../../widgets/premium_button.dart';
 import '../../widgets/premium_dialog.dart';
@@ -18,9 +20,11 @@ import '../../widgets/section_header.dart';
 import '../../widgets/three_d_viewer.dart';
 import '../../widgets/thumbnail.dart';
 import '../actions/action_select_screen.dart';
+import '../characters/bone_mapping_sheet.dart';
 import '../player/player_screen.dart';
 
-/// Premium character details: live 3D preview, file facts, animations list.
+/// Premium character details: live 3D preview, validation facts, standard
+/// action grid, mapping editors and full management actions.
 class CharacterDetailScreen extends StatefulWidget {
   const CharacterDetailScreen({super.key, required this.characterId});
 
@@ -109,8 +113,12 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         Text(
+                          '${character.source == CharacterSource.bundled ? 'Bundled Sample' : 'Imported Character'} · '
+                          '${character.readinessLabel()} · '
                           '${character.animationCount} '
                           '${character.animationCount == 1 ? 'Animation' : 'Animations'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -127,7 +135,10 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                     onSelected: (value) => _onMenu(value, character, library),
                     itemBuilder: (context) => const [
                       PopupMenuItem(value: 'rename', child: Text('Edit Name')),
+                      PopupMenuItem(value: 'mapping', child: Text('Edit Mapping')),
+                      PopupMenuItem(value: 'bones', child: Text('Bone Mapping')),
                       PopupMenuItem(value: 'share', child: Text('Share')),
+                      PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
                       PopupMenuItem(value: 'export', child: Text('Export')),
                       PopupMenuItem(value: 'delete', child: Text('Delete')),
                     ],
@@ -187,44 +198,98 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                       Expanded(
                         flex: 2,
                         child: PremiumButton(
-                          label: 'Animate',
-                          icon: Icons.animation_rounded,
+                          label: 'Use Character',
+                          icon: Icons.play_arrow_rounded,
                           style: PremiumButtonStyle.primary,
-                          onPressed: character.animations.isEmpty ? null : () {
-                            library.recordUsage(
-                              character,
-                              library.lastUsageOf(character.id)?.animationName ??
-                                  (character.animations.isNotEmpty
-                                      ? character.animations.first.name
-                                      : null),
-                            );
-                            Navigator.of(context).push(
-                              fadeSlideRoute(ActionSelectScreen(
-                                  characterId: character.id)),
-                            );
-                          },
+                          onPressed: () => _useCharacter(character, library),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: PremiumButton(
-                          label: 'Play',
-                          icon: Icons.play_arrow_rounded,
-                          onPressed: () {
-                            final last =
-                                library.lastUsageOf(character.id)?.animationName;
-                            Navigator.of(context).push(
-                              fadeSlideRoute(PlayerScreen(
-                                characterId: character.id,
-                                initialAnimationName: last ??
-                                    (character.animations.isNotEmpty
-                                        ? character.animations.first.name
-                                        : null),
-                              )),
-                            );
-                          },
+                          label: 'All Clips',
+                          icon: Icons.animation_rounded,
+                          onPressed: character.animations.isEmpty
+                              ? null
+                              : () => Navigator.of(context).push(
+                                    fadeSlideRoute(ActionSelectScreen(
+                                        characterId: character.id)),
+                                  ),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                // Quick facts
+                SectionHeader(title: 'Character'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: GlassCard(
+                    padding: const EdgeInsets.all(14),
+                    blur: 6,
+                    shadow: false,
+                    child: Row(
+                      children: [
+                        _FactTile(
+                          icon: character.hasSkeleton
+                              ? Icons.check_circle_rounded
+                              : Icons.cancel_rounded,
+                          iconColor: character.hasSkeleton
+                              ? AppColors.success
+                              : AppColors.danger,
+                          label: 'Skeleton',
+                          value: character.hasSkeleton
+                              ? '✓ ${character.boneCount} bones'
+                              : 'None',
+                        ),
+                        _FactTile(
+                          icon: Icons.animation_rounded,
+                          iconColor: AppColors.accent,
+                          label: 'Animations',
+                          value:
+                              '${character.animationCount} found · '
+                              '${character.animationMapping.length} mapped',
+                        ),
+                        _FactTile(
+                          icon: Icons.view_in_ar_rounded,
+                          iconColor: AppColors.accent,
+                          label: 'Meshes',
+                          value: '${character.meshCount}',
+                        ),
+                        _FactTile(
+                          icon: Icons.palette_outlined,
+                          iconColor: AppColors.accent,
+                          label: 'Materials',
+                          value: '${character.materialCount}',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Standard action grid
+                SectionHeader(
+                  title: 'Actions',
+                  actionLabel: character.animations.isNotEmpty ? 'Edit Mapping' : null,
+                  onAction: character.animations.isNotEmpty
+                      ? () => _editMapping(character, library)
+                      : null,
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 2.6,
+                    children: [
+                      for (final action in StandardAction.all)
+                        _StandardActionTile(
+                          action: action,
+                          clipName: character.animationMapping[action],
+                          onTap: () => _playStandard(character, action, library),
+                        ),
                     ],
                   ),
                 ),
@@ -239,9 +304,12 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                       shadow: false,
                       child: Column(
                         children: [
+                          _InfoRow(label: 'File', value: character.fileName),
+                          _InfoRow(label: 'Character ID',
+                              value: character.charId ?? '—'),
                           _InfoRow(
-                              label: 'File',
-                              value: character.fileName),
+                              label: 'Original file',
+                              value: character.originalFileName ?? character.fileName),
                           _InfoRow(
                               label: 'Size',
                               value:
@@ -249,16 +317,22 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                           _InfoRow(
                               label: 'Animations',
                               value: '${character.animationCount}'),
+                          _InfoRow(label: 'Meshes', value: '${character.meshCount}'),
                           _InfoRow(
-                              label: 'Meshes',
-                              value: '${character.meshCount}'),
-                          _InfoRow(
-                              label: 'Materials',
-                              value: '${character.materialCount}'),
-                          if (character.skinCount > 0)
+                              label: 'Materials', value: '${character.materialCount}'),
+                          if (character.hasSkeleton)
                             _InfoRow(
-                                label: 'Rig (skins)',
-                                value: '${character.skinCount}'),
+                                label: 'Rig (bones)',
+                                value: '${character.boneCount}'),
+                          if (character.humanoidDetected)
+                            const _InfoRow(
+                                label: 'Humanoid rig',
+                                value: 'Detected',
+                                good: true),
+                          _InfoRow(
+                              label: 'Triangles',
+                              value:
+                                  '${(character.triangleCount / 1000).toStringAsFixed(1)}K'),
                           if (character.generator != null)
                             _InfoRow(
                                 label: 'Exported with',
@@ -273,6 +347,11 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                                   ? 'Never'
                                   : Formatters.relativeTime(character.lastUsedAt)),
                           _InfoRow(
+                              label: 'Used',
+                              value: character.useCount == 0
+                                  ? 'Never'
+                                  : '${character.useCount} times'),
+                          _InfoRow(
                               label: 'Source',
                               value: character.source == CharacterSource.bundled
                                   ? 'Bundled sample'
@@ -282,7 +361,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                     ),
                   ),
                 ],
-                // Animations
+                // All detected animations
                 SectionHeader(
                   title: 'Available Animations',
                   actionLabel: character.animations.length > 3 ? 'Choose' : null,
@@ -341,35 +420,113 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
     );
   }
 
-  Widget _spinHint() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.45),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.swap_horiz_rounded, size: 12, color: Colors.white70),
-          SizedBox(width: 5),
-          Text(
-            'Drag to rotate',
-            style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white70),
+  // ---------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------
+  void _useCharacter(Character character, LibraryProvider library) {
+    final mapped = character.animationMapping.entries
+        .where((e) => e.value.isNotEmpty)
+        .toList();
+    final clipName = mapped.isNotEmpty
+        ? mapped.first.value
+        : (character.animations.isNotEmpty ? character.animations.first.name : null);
+    Navigator.of(context).push(
+      fadeSlideRoute(PlayerScreen(
+        characterId: character.id,
+        initialAnimationName: clipName,
+      )),
+    );
+    if (clipName != null) {
+      library.recordUsage(character, clipName);
+    }
+  }
+
+  void _playStandard(
+      Character character, String action, LibraryProvider library) {
+    final clip = character.clipForAction(action);
+    if (clip == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '${StandardAction.label(action)} animation is not available for this character.'),
+          action: SnackBarAction(
+            label: 'Use another',
+            onPressed: () => Navigator.of(context).push(
+              fadeSlideRoute(ActionSelectScreen(characterId: character.id)),
+            ),
           ),
-        ],
+        ),
+      );
+      return;
+    }
+    library.recordUsage(character, clip.name);
+    Navigator.of(context).push(
+      fadeSlideRoute(PlayerScreen(
+        characterId: character.id,
+        initialAnimationName: clip.name,
+      )),
+    );
+  }
+
+  Future<void> _editMapping(
+      Character character, LibraryProvider library) async {
+    final result = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _MappingSheet(character: character),
+    );
+    if (result != null) {
+      await library.saveAnimationMapping(character, result);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Animation mapping saved')),
+        );
+      }
+    }
+  }
+
+  Future<void> _editBones(
+      Character character, LibraryProvider library) async {
+    final result = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => BoneMappingSheet(
+        boneNames: _boneNamesFor(character),
+        initialMapping: character.boneMapping,
       ),
     );
+    if (result != null) {
+      await library.saveBoneMapping(character, result);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bone mapping saved')),
+        );
+      }
+    }
+  }
+
+  List<String> _boneNamesFor(Character character) {
+    // Bone names come from the last parse; when the library was re-scanned
+    // the metadata mapping keeps every previously matched name, and the
+    // remaining bones can be re-listed from the mapping sheet detector.
+    final known = <String>{...character.boneMapping.values};
+    // Add common armature node names derived from the mapping keys so the
+    // dropdown always offers the current selection.
+    return known.toList();
   }
 
   void _onMenu(String action, Character character, LibraryProvider library) {
     switch (action) {
       case 'rename':
         _showRenameDialog(character, library);
+      case 'mapping':
+        _editMapping(character, library);
+      case 'bones':
+        _editBones(character, library);
       case 'share':
         _shareCharacter(character);
+      case 'duplicate':
+        _duplicate(character, library);
       case 'export':
         final last = library.lastUsageOf(character.id)?.animationName;
         Navigator.of(context).push(
@@ -384,6 +541,27 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
         );
       case 'delete':
         _confirmDelete(character, library);
+    }
+  }
+
+  Future<void> _duplicate(
+      Character character, LibraryProvider library) async {
+    try {
+      await library.duplicate(character);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('${character.displayName} duplicated')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('The character could not be duplicated.')),
+        );
+      }
     }
   }
 
@@ -447,7 +625,8 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       context,
       title: 'Delete Character?',
       message:
-          '"${character.displayName}" will be removed from your library. This cannot be undone.',
+          '"${character.displayName}" will be removed from your library and its '
+          'files deleted from app storage. This cannot be undone.',
       confirmLabel: 'Delete',
     );
     if (confirmed) {
@@ -457,14 +636,255 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       }
     }
   }
+
+  Widget _spinHint() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.swap_horiz_rounded, size: 12, color: Colors.white70),
+          SizedBox(width: 5),
+          Text(
+            'Drag to rotate',
+            style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ======================================================================
+// Pieces
+// ======================================================================
+
+class _MappingSheet extends StatelessWidget {
+  const _MappingSheet({required this.character});
+
+  final Character character;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final mapping = Map<String, String?>.from(character.animationMapping);
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.75,
+        builder: (context, scrollController) {
+          return ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            children: [
+              Text('Animation Mapping',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text(
+                'Map standard actions to the clips embedded in this model.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+              ActionMappingEditor(
+                clips: character.animations,
+                mapping: mapping,
+                suggestions: const {},
+                confidences: const {},
+                onChanged: (action, clip) => mapping[action] = clip,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: PremiumButton(
+                      label: 'Cancel',
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: PremiumButtonStyle.ghost,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: PremiumButton(
+                      label: 'Save Mapping',
+                      icon: Icons.check_rounded,
+                      style: PremiumButtonStyle.primary,
+                      onPressed: () => Navigator.of(context).pop({
+                        for (final e in mapping.entries)
+                          if (e.value != null && e.value!.isNotEmpty)
+                            e.key: e.value!,
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: isDark ? 0 : 0),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StandardActionTile extends StatelessWidget {
+  const _StandardActionTile({
+    required this.action,
+    required this.clipName,
+    required this.onTap,
+  });
+
+  final String action;
+  final String? clipName;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = clipName != null && clipName!.isNotEmpty;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Semantics(
+      label:
+          '$action ${enabled ? 'play' : 'not available for this character'}',
+      button: true,
+      enabled: enabled,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.surface : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: enabled ? AppColors.accent.withOpacity(0.5) : AppColors.stroke,
+              width: enabled ? 1.3 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: enabled ? AppColors.accentSoft : AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  Icons.play_arrow_rounded,
+                  size: 20,
+                  color: enabled ? AppColors.accent : AppColors.textMuted,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          StandardAction.label(action),
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            color: enabled
+                                ? null
+                                : (isDark
+                                    ? AppColors.textMuted
+                                    : const Color(0xFF8B94A6)),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          enabled
+                              ? Icons.check_rounded
+                              : Icons.remove_rounded,
+                          size: 14,
+                          color: enabled ? AppColors.success : AppColors.textMuted,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      enabled
+                          ? (clipName ?? '').split('|').last
+                          : 'Not available',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FactTile extends StatelessWidget {
+  const _FactTile({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, size: 19, color: iconColor),
+          const SizedBox(height: 6),
+          Text(label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    letterSpacing: 0.6,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  )),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value, this.small = false});
+  const _InfoRow({required this.label, required this.value, this.small = false, this.good = false});
 
   final String label;
   final String value;
   final bool small;
+  final bool good;
 
   @override
   Widget build(BuildContext context) {
@@ -488,10 +908,11 @@ class _InfoRow extends StatelessWidget {
               value,
               maxLines: small ? 2 : 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w600, fontSize: 13),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: good ? AppColors.success : null,
+                  ),
             ),
           ),
         ],

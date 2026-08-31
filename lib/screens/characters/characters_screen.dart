@@ -3,20 +3,26 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart' as sharing;
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/formatters.dart';
+import '../../models/character.dart';
 import '../../state/library_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../widgets/character_card.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_view.dart';
+import '../../widgets/glass_card.dart';
 import '../../widgets/micro_animations.dart';
 import '../../widgets/premium_button.dart';
 import '../../widgets/premium_dialog.dart';
 import '../../widgets/search_bar.dart';
 import '../../widgets/filter_chip.dart';
+import '../../widgets/thumbnail.dart';
 import 'character_detail_screen.dart';
 import 'import_flow.dart';
+import '../player/player_screen.dart';
 
-/// Character library: search, filters, sorting and a responsive grid.
+/// Character library: search, filters, sorting, grouped sections
+/// (Recently Used · Built-in · Imported) and a responsive grid.
 class CharactersScreen extends StatefulWidget {
   const CharactersScreen({super.key});
 
@@ -38,6 +44,8 @@ class _CharactersScreenState extends State<CharactersScreen> {
     final library = context.watch<LibraryProvider>();
     final settings = context.watch<SettingsProvider>();
     final visible = library.visibleCharacters;
+    final grouped =
+        library.query.trim().isEmpty && library.filter == LibraryFilter.all;
 
     return Scaffold(
       body: SafeArea(
@@ -65,7 +73,7 @@ class _CharactersScreenState extends State<CharactersScreen> {
                     ),
                     const SizedBox(width: 10),
                     PremiumButton(
-                      label: 'Import GLB',
+                      label: 'Import',
                       icon: Icons.add_rounded,
                       onPressed: () => startImportFlow(context),
                       small: true,
@@ -83,7 +91,6 @@ class _CharactersScreenState extends State<CharactersScreen> {
                   hint: 'Search characters...',
                   onChanged: (q) {
                     library.setQuery(q);
-                    // Refresh suffix icon visibility.
                     setState(() {});
                   },
                 ),
@@ -130,91 +137,224 @@ class _CharactersScreenState extends State<CharactersScreen> {
             ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
-              sliver: SliverLayoutBuilder(
-                builder: (context, constraints) {
-                  // Responsive grid: ~2 columns on phones, more on tablets.
-                  final width = constraints.crossAxisExtent;
-                  final columns = width > 1050
-                      ? 5
-                      : width > 820
-                          ? 4
-                          : width > 560
-                              ? 3
-                              : 2;
-                  const spacing = 12.0;
+              sliver: grouped
+                  ? _buildGrouped(context, library)
+                  : _buildFlatGrid(context, library, visible),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          ],
+        ),
+      ),
+    );
+  }
 
-                  if (library.loading && library.characters.isEmpty) {
-                    return const SliverFillRemaining(
-                      child: Center(
-                        child: SizedBox(
-                          width: 30,
-                          height: 30,
-                          child: CircularProgressIndicator(strokeWidth: 2.6),
-                        ),
-                      ),
-                    );
-                  }
+  // ---------------------------------------------------------------------
+  // Grouped view: Recently Used → Built-in → Imported
+  // ---------------------------------------------------------------------
+  Widget _buildGrouped(BuildContext context, LibraryProvider library) {
+    if (library.loading && library.characters.isEmpty) {
+      return const SliverFillRemaining(
+        child: Center(
+          child: SizedBox(
+            width: 30,
+            height: 30,
+            child: CircularProgressIndicator(strokeWidth: 2.6),
+          ),
+        ),
+      );
+    }
 
-                  if (library.error != null && library.characters.isEmpty) {
-                    return SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Center(
-                          child: ErrorView(
-                            title: 'Library unavailable',
-                            message: library.error!,
-                            onRetry: () => library.refresh(),
-                          ),
-                        ),
-                      ),
-                    );
-                  }
+    if (library.error != null && library.characters.isEmpty) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ErrorView(
+              title: 'Library unavailable',
+              message: library.error!,
+              onRetry: () => library.refresh(),
+            ),
+          ),
+        ),
+      );
+    }
 
-                  if (visible.isEmpty) {
-                    return SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _emptyFor(context, library),
-                    );
-                  }
+    if (library.characters.isEmpty) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: EmptyState(
+          icon: Icons.view_in_ar_outlined,
+          title: 'No characters yet',
+          message: 'Import a GLB/GLTF file from your device to start animating.',
+          actionLabel: 'Import Character',
+          onAction: () => startImportFlow(context),
+        ),
+      );
+    }
 
-                  return SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: columns,
-                      mainAxisSpacing: spacing,
-                      crossAxisSpacing: spacing,
-                      childAspectRatio: 0.78,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final character = visible[index];
-                        return StaggeredEntrance(
-                          index: index,
-                          child: CharacterCard(
-                            character: character,
-                            onOpen: () => _openDetail(character.id),
-                            onFavoriteToggle: () =>
-                                library.toggleFavorite(character),
-                            onRename: () => _rename(character),
-                            onDelete: () => _delete(character),
-                            onShare: () => _share(character),
-                            onDetails: () => _openDetail(character.id),
-                          ),
-                        );
-                      },
-                      childCount: visible.length,
-                    ),
+    final recents = library.recents;
+    final bundled = library.bundledCharacters;
+    final imported = library.importedCharacters;
+
+    return MultiSliver(
+      children: [
+        if (recents.isNotEmpty) ...[
+          _sectionLabel(context, 'Recently Used'),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 84,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: recents.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final recent = recents[index];
+                  return _RecentMiniCard(
+                    character: recent.character,
+                    animationDisplay: recent.entry.animationDisplay,
+                    timeLabel: Formatters.relativeTime(recent.entry.timestamp),
                   );
                 },
               ),
             ),
-            // Bottom padding for the nav bar.
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 16),
-            ),
-          ],
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+        ],
+        if (bundled.isNotEmpty) ...[
+          _sectionLabel(context, 'Built-in Characters'),
+          _gridFor(bundled, showImportedDate: false),
+        ],
+        if (imported.isNotEmpty) ...[
+          _sectionLabel(context, 'Imported Characters'),
+          _gridFor(imported, showImportedDate: true),
+        ],
+      ],
+    );
+  }
+
+  Widget _sectionLabel(BuildContext context, String title) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(0, 10, 0, 10),
+        child: Text(
+          title.toUpperCase(),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                letterSpacing: 1.6,
+                fontWeight: FontWeight.w800,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.textSecondary
+                    : AppColors.lightTextSecondary,
+              ),
         ),
       ),
+    );
+  }
+
+  Widget _gridFor(List<Character> characters,
+      {required bool showImportedDate}) {
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.crossAxisExtent;
+        final columns = width > 1050
+            ? 5
+            : width > 820
+                ? 4
+                : width > 560
+                    ? 3
+                    : 2;
+        const spacing = 12.0;
+        return SliverGrid(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            childAspectRatio: 0.76,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final character = characters[index];
+              return StaggeredEntrance(
+                index: index,
+                child: _cardFor(character,
+                    showImportedDate: showImportedDate),
+              );
+            },
+            childCount: characters.length,
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Flat (filtered/searched) view
+  // ---------------------------------------------------------------------
+  Widget _buildFlatGrid(
+      BuildContext context, LibraryProvider library, List<Character> visible) {
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        if (library.loading && library.characters.isEmpty) {
+          return const SliverFillRemaining(
+            child: Center(
+              child: SizedBox(
+                width: 30,
+                height: 30,
+                child: CircularProgressIndicator(strokeWidth: 2.6),
+              ),
+            ),
+          );
+        }
+        if (visible.isEmpty) {
+          return SliverFillRemaining(
+            hasScrollBody: false,
+            child: _emptyFor(context, library),
+          );
+        }
+        final width = constraints.crossAxisExtent;
+        final columns = width > 1050
+            ? 5
+            : width > 820
+                ? 4
+                : width > 560
+                    ? 3
+                    : 2;
+        const spacing = 12.0;
+        return SliverGrid(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            childAspectRatio: 0.76,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final character = visible[index];
+              return StaggeredEntrance(
+                index: index,
+                child: _cardFor(character, showImportedDate: false),
+              );
+            },
+            childCount: visible.length,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _cardFor(Character character, {required bool showImportedDate}) {
+    final library = context.read<LibraryProvider>();
+    return CharacterCard(
+      character: character,
+      showImportedDate: showImportedDate,
+      onOpen: () => _openDetail(character.id),
+      onFavoriteToggle: () => library.toggleFavorite(character),
+      onRename: () => _rename(character),
+      onDelete: () => _delete(character),
+      onShare: () => _share(character),
+      onDuplicate: () => _duplicate(character),
+      onDetails: () => _openDetail(character.id),
     );
   }
 
@@ -252,7 +392,7 @@ class _CharactersScreenState extends State<CharactersScreen> {
       icon: Icons.view_in_ar_outlined,
       title: 'No characters yet',
       message: 'Import a GLB file from your device to start animating.',
-      actionLabel: 'Import GLB',
+      actionLabel: 'Import Character',
       onAction: () => startImportFlow(context),
     );
   }
@@ -263,7 +403,7 @@ class _CharactersScreenState extends State<CharactersScreen> {
     );
   }
 
-  Future<void> _rename(character) async {
+  Future<void> _rename(Character character) async {
     final library = context.read<LibraryProvider>();
     final controller = TextEditingController(text: character.displayName);
     final result = await showPremiumDialog<String>(
@@ -287,7 +427,6 @@ class _CharactersScreenState extends State<CharactersScreen> {
           maxLength: 40,
           decoration: InputDecoration(
             hintText: 'Display name',
-            counterText: '',
             filled: true,
             fillColor: AppColors.surfaceAlt,
             border: OutlineInputBorder(
@@ -308,14 +447,14 @@ class _CharactersScreenState extends State<CharactersScreen> {
     }
   }
 
-  Future<void> _delete(character) async {
+  Future<void> _delete(Character character) async {
     final library = context.read<LibraryProvider>();
     final confirmed = await showConfirmDialog(
       context,
       title: 'Delete Character?',
       message:
-          '"${character.displayName}" will be removed from your library. '
-          'This cannot be undone.',
+          '"${character.displayName}" will be removed from your library and its '
+          'files deleted from app storage. This cannot be undone.',
       confirmLabel: 'Delete',
     );
     if (confirmed) {
@@ -328,7 +467,27 @@ class _CharactersScreenState extends State<CharactersScreen> {
     }
   }
 
-  Future<void> _share(character) async {
+  Future<void> _duplicate(Character character) async {
+    final library = context.read<LibraryProvider>();
+    try {
+      await library.duplicate(character);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('${character.displayName} duplicated as a new character')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The character could not be duplicated.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _share(Character character) async {
     try {
       await sharing.Share.shareXFiles(
         [sharing.XFile(character.filePath)],
@@ -341,6 +500,105 @@ class _CharactersScreenState extends State<CharactersScreen> {
         );
       }
     }
+  }
+}
+
+// ======================================================================
+// Recently-used mini card (Library top section)
+// ======================================================================
+class _RecentMiniCard extends StatelessWidget {
+  const _RecentMiniCard({
+    required this.character,
+    required this.animationDisplay,
+    required this.timeLabel,
+  });
+
+  final Character character;
+  final String animationDisplay;
+  final String timeLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final library = context.read<LibraryProvider>();
+    return GlassCard(
+      onTap: () {
+        Navigator.of(context).push(
+          fadeSlideRoute(PlayerScreen(
+            characterId: character.id,
+            initialAnimationName: library.lastUsageOf(character.id)?.animationName,
+          )),
+        );
+      },
+      padding: const EdgeInsets.all(8),
+      borderRadius: 18,
+      blur: 8,
+      shadow: false,
+      child: SizedBox(
+        width: 218,
+        child: Row(
+          children: [
+            CharacterAvatar(character: character, size: 62, borderRadius: 14),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    character.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(Icons.animation_rounded,
+                          size: 11,
+                          color: isDark
+                              ? AppColors.accentAlt
+                              : AppColors.lightAccent),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          animationDisplay,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark
+                                ? AppColors.accentAlt
+                                : AppColors.lightAccent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    timeLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? AppColors.textMuted
+                          : const Color(0xFF8B94A6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -387,5 +645,17 @@ class _SortButton extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Lightweight multi-sliver so grouped sections can live in one sliver context.
+class MultiSliver extends StatelessWidget {
+  const MultiSliver({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverMainAxisGroup(slivers: children.cast());
   }
 }

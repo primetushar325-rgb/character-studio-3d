@@ -280,6 +280,14 @@ class ThreeDController extends ChangeNotifier {
   Future<void> setAutoRotateCamera(bool enabled) =>
       _eval('studio.setAutoRotate(${jsonEncode(enabled)})');
 
+  /// Two-finger pan on/off (rotate + pinch zoom are always enabled).
+  Future<void> setPanEnabled(bool enabled) =>
+      _eval('studio.setPanEnabled(${jsonEncode(enabled)})');
+
+  /// Show/hide the studio floor grid.
+  Future<void> setGridVisible(bool visible) =>
+      _eval('studio.setGrid(${jsonEncode(visible)})');
+
   Future<void> setCameraOrbit(String orbit) =>
       _eval('studio.setOrbit(${jsonEncode(orbit)})');
 

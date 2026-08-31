@@ -8,7 +8,8 @@ import '../services/storage_service.dart';
 import '../services/thumbnail_service.dart';
 
 /// Owns the character library: discovery, metadata, favorites, recents,
-/// import/delete/rename. Business logic lives here, not in widgets.
+/// staged imports, mapping persistence, duplicate/delete/rename.
+/// Business logic lives here, not in widgets.
 class CharacterRepository {
   CharacterRepository({
     required StorageService storage,
@@ -46,11 +47,12 @@ class CharacterRepository {
   // ---------------------------------------------------------------------
   Future<void> initialize() async {
     await _ensureBundledInstalled();
+    // Clean up half-staged imports after a crash during review.
+    _service.clearPendingImports();
   }
 
   Future<void> _ensureBundledInstalled() async {
     if (_storage.bundledInstalled) {
-      // Reinstall anything missing (e.g. app data survived a partial clear).
       _bundledIds = {..._loadBundledMeta()};
       return;
     }
@@ -82,23 +84,7 @@ class CharacterRepository {
       final meta = _metadata[c.id];
 
       if (meta is Map<String, dynamic>) {
-        final storedName = meta['display'] as String?;
-        if (storedName != null && storedName.isNotEmpty) {
-          c.displayName = storedName;
-        }
-        c.isFavorite = meta['favorite'] as bool? ?? false;
-        c.useCount = (meta['useCount'] as num?)?.toInt() ?? 0;
-        final lastUsed = meta['lastUsed'] as String?;
-        c.lastUsedAt = lastUsed == null ? null : DateTime.tryParse(lastUsed);
-        final createdAt = meta['createdAt'] as String?;
-        final parsedCreated =
-            createdAt == null ? null : DateTime.tryParse(createdAt);
-        if (parsedCreated != null &&
-            parsedCreated.isBefore(c.createdAt) &&
-            parsedCreated.year > 2000) {
-          // Preserve the original install date of bundled samples.
-          c.createdAt = parsedCreated;
-        }
+        _applyMetadata(c, meta);
       }
 
       c.thumbnailPath ??= _thumbnails.siblingThumbnail(c.fileName)?.path;
@@ -115,18 +101,97 @@ class CharacterRepository {
     return (loaded, warnings);
   }
 
-  // ---------------------------------------------------------------------
-  // Import
-  // ---------------------------------------------------------------------
-  Future<ImportOutcome> importFromPicker(List<PlatformFile> files) async {
-    final outcome = await _service.importPickedFiles(files);
-    if (outcome.success && outcome.character != null) {
-      final c = outcome.character!;
-      _metadata[c.id] = _metaFor(c);
-      await _storage.saveMetadata(_metadata);
-      await reload();
+  void _applyMetadata(Character c, Map<String, dynamic> meta) {
+    final storedName = meta['display'] as String?;
+    if (storedName != null && storedName.isNotEmpty) {
+      c.displayName = storedName;
     }
-    return outcome;
+    c.isFavorite = meta['favorite'] as bool? ?? false;
+    c.useCount = (meta['useCount'] as num?)?.toInt() ?? 0;
+    final lastUsed = meta['lastUsed'] as String?;
+    c.lastUsedAt = lastUsed == null ? null : DateTime.tryParse(lastUsed);
+    final createdAt = meta['createdAt'] as String?;
+    final parsedCreated =
+        createdAt == null ? null : DateTime.tryParse(createdAt);
+    if (parsedCreated != null &&
+        parsedCreated.isBefore(c.createdAt) &&
+        parsedCreated.year > 2000) {
+      // Preserve the original install date of bundled samples.
+      c.createdAt = parsedCreated;
+    }
+    // v1.1 fields (old installs simply don't have them yet).
+    final mapping = meta['animationMapping'];
+    if (mapping is Map<String, dynamic>) {
+      c.animationMapping = {
+        for (final e in mapping.entries)
+          if (e.value is String && (e.value as String).isNotEmpty)
+            e.key: e.value as String,
+      };
+    }
+    final bones = meta['boneMapping'];
+    if (bones is Map<String, dynamic>) {
+      c.boneMapping = {
+        for (final e in bones.entries)
+          if (e.value is String && (e.value as String).isNotEmpty)
+            e.key: e.value as String,
+      };
+    }
+    // A manually-emptied mapping must survive a rescan.
+    if (meta.containsKey('animationMapping') &&
+        (mapping is Map<String, dynamic>) &&
+        mapping.isEmpty) {
+      c.animationMapping = {};
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Staged import (pick → validate → review → Save Character)
+  // ---------------------------------------------------------------------
+  Future<Object> stageImport(
+    List<String> sourcePaths, {
+    void Function(ImportStage stage)? onStage,
+  }) {
+    return _service.stageImport(sourcePaths, onStage: onStage);
+  }
+
+  /// "Save Character": persists the staged model + full metadata.
+  Future<Character> commitImport(
+    StagedImport staged, {
+    String? displayName,
+    Map<String, String>? animationMapping,
+    Map<String, String>? boneMapping,
+  }) async {
+    final committed = await _service.commitImport(
+      staged,
+      displayName: displayName,
+      animationMapping: animationMapping,
+      boneMapping: boneMapping,
+    );
+    _metadata[committed.id] = _metaFor(committed);
+    await _storage.saveMetadata(_metadata);
+    await loadLibrary();
+    return byId(committed.id) ?? committed;
+  }
+
+  Future<void> discardImport(StagedImport staged) async {
+    await _service.discardImport(staged);
+  }
+
+  /// Legacy one-shot import kept for compatibility (stage + commit).
+  Future<ImportOutcome> importFromPicker(List<PlatformFile> files) async {
+    final paths = <String>[
+      for (final f in files)
+        if (f.path != null && f.path!.isNotEmpty) f.path!
+    ];
+    final staged = await _service.stageImport(paths);
+    if (staged is! StagedImport) {
+      return ImportOutcome(errorMessage: (staged as ImportOutcome).errorMessage);
+    }
+    final committed = await commitImport(staged);
+    return ImportOutcome(
+      character: committed,
+      warnings: staged.warnings,
+    );
   }
 
   Future<void> reload() async {
@@ -142,6 +207,17 @@ class CharacterRepository {
         'createdAt': c.createdAt.toIso8601String(),
         'lastUsed': c.lastUsedAt?.toIso8601String(),
         'useCount': c.useCount,
+        // v1.1
+        'charId': c.charId,
+        'source': c.source == CharacterSource.bundled ? 'bundled' : 'imported',
+        'originalFileName': c.originalFileName,
+        'hasSkeleton': c.hasSkeleton,
+        'boneCount': c.boneCount,
+        'readiness': c.readiness.name,
+        'animationMapping': c.animationMapping,
+        'boneMapping': c.boneMapping,
+        'humanoidDetected': c.humanoidDetected,
+        'updatedAt': (c.updatedAt ?? DateTime.now()).toIso8601String(),
       };
 
   Future<void> _persistCharacter(Character c) async {
@@ -158,6 +234,23 @@ class CharacterRepository {
     final trimmed = newDisplayName.trim();
     if (trimmed.isEmpty) return;
     c.displayName = trimmed;
+    c.updatedAt = DateTime.now();
+    await _persistCharacter(c);
+  }
+
+  /// Persist the standard-action → clip mapping (manual edits included).
+  Future<void> saveAnimationMapping(
+      Character c, Map<String, String> mapping) async {
+    c.animationMapping = Map<String, String>.from(mapping);
+    c.updatedAt = DateTime.now();
+    // Readiness reflects the live mapping.
+    await _persistCharacter(c);
+  }
+
+  /// Persist the humanoid bone mapping (auto-detected + manual overrides).
+  Future<void> saveBoneMapping(Character c, Map<String, String> mapping) async {
+    c.boneMapping = Map<String, String>.from(mapping);
+    c.updatedAt = DateTime.now();
     await _persistCharacter(c);
   }
 
@@ -171,7 +264,16 @@ class CharacterRepository {
     await _storage.saveMetadata(_metadata);
     _recents.removeWhere((r) => r.characterId == c.id);
     await _persistRecents();
-    await reload();
+    await loadLibrary();
+  }
+
+  /// Duplicate → new imported copy in the library.
+  Future<Character> duplicate(Character c) async {
+    final copy = await _service.duplicate(c);
+    _metadata[copy.id] = _metaFor(copy);
+    await _storage.saveMetadata(_metadata);
+    await loadLibrary();
+    return byId(copy.id) ?? copy;
   }
 
   Future<void> updateThumbnail(String characterId, String? thumbnailPath) async {

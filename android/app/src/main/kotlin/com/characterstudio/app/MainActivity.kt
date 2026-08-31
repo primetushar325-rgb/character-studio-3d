@@ -8,6 +8,7 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.util.Base64
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -31,6 +32,7 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "app.characterstudio/native"
         private const val REQUEST_PROJECTION = 4201
         private const val REQUEST_NOTIFICATIONS = 4202
+        private const val REQUEST_OPEN_DOCUMENT = 4203
     }
 
     private var channel: MethodChannel? = null
@@ -43,6 +45,12 @@ class MainActivity : FlutterActivity() {
             ch.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "isScreenRecordingSupported" -> result.success(true)
+
+                    "pickModelFile" -> {
+                        // Fallback picker: Android system document picker
+                        // (ACTION_OPEN_DOCUMENT) filtered by MIME/extension.
+                        pickModelDocument(result)
+                    }
 
                     "startScreenRecording" -> {
                         val args = mutableMapOf<String, Any>()
@@ -119,8 +127,112 @@ class MainActivity : FlutterActivity() {
     }
 
     // ---------------------------------------------------------------------
-    // Screen recording flow
+    // Native file picker fallback (ACTION_OPEN_DOCUMENT)
     // ---------------------------------------------------------------------
+
+    /**
+     * Opens the Android system document picker filtered for GLB/glTF models.
+     * The picked content is copied into the app cache and the absolute path
+     * is returned to Dart (or null when the user cancels).
+     */
+    private fun pickModelDocument(result: MethodChannel.Result) {
+        if (pendingResult != null) {
+            result.error("BUSY", "Another picker is already in progress", null)
+            return
+        }
+        pendingResult = result
+        try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                // Primary model MIME types; EXTRA_MIME_TYPES broadens matching
+                // because many providers label .glb as octet-stream.
+                putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    arrayOf(
+                        "model/gltf-binary",
+                        "model/gltf+json",
+                        "application/octet-stream",
+                        "application/json"
+                    )
+                )
+            }
+            startActivityForResult(intent, REQUEST_OPEN_DOCUMENT)
+        } catch (t: Throwable) {
+            finishPending(null, "PICKER_FAILED", t.message ?: "File picker unavailable")
+        }
+    }
+
+    private fun deliverPickedDocument(data: Intent?) {
+        val uri = data?.data
+        if (uri == null) {
+            finishPending(null, null, null) // user cancelled → null result
+            return
+        }
+        Thread {
+            try {
+                val resolver = contentResolver
+                val name = queryDisplayName(uri) ?: "character.glb"
+                if (!name.lowercase().endsWith(".glb") &&
+                    !name.lowercase().endsWith(".gltf")
+                ) {
+                    runOnUiThread {
+                        finishPendingMap(
+                            mapOf(
+                                "error" to true,
+                                "message" to
+                                    "The selected file is not a .glb or .gltf model."
+                            )
+                        )
+                    }
+                    return@Thread
+                }
+
+                val cacheDir = File(cacheDir, "import").apply { mkdirs() }
+                // Clear previous cached picks (keep only the newest).
+                cacheDir.listFiles()?.forEach { it.delete() }
+                val outFile = File(cacheDir, name)
+                resolver.openInputStream(uri)?.use { input ->
+                    outFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("Could not read the selected file")
+
+                runOnUiThread {
+                    finishPendingMap(
+                        mapOf(
+                            "path" to outFile.absolutePath,
+                            "name" to name,
+                            "size" to outFile.length()
+                        )
+                    )
+                }
+            } catch (t: Throwable) {
+                runOnUiThread {
+                    finishPending(
+                        null,
+                        "READ_FAILED",
+                        "The selected file could not be read."
+                    )
+                }
+            }
+        }.start()
+    }
+
+    private fun queryDisplayName(uri: Uri): String? = try {
+        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun finishPendingMap(value: Map<String, Any?>) {
+        val result = pendingResult ?: return
+        pendingResult = null
+        pendingRecordingArgs = null
+        result.success(value)
+    }
+
 
     private fun beginRecording(
         args: Map<String, Any>,
@@ -177,6 +289,14 @@ class MainActivity : FlutterActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_OPEN_DOCUMENT) {
+            if (resultCode == RESULT_OK && data != null) {
+                deliverPickedDocument(data)
+            } else {
+                finishPending(null, null, null) // user cancelled
+            }
+            return
+        }
         if (requestCode != REQUEST_PROJECTION) return
 
         val args = pendingRecordingArgs ?: return finishPending(null, "INVALID", "No pending export")
