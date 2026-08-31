@@ -15,6 +15,7 @@ import '../../widgets/thumbnail.dart';
 import '../actions/action_select_screen.dart';
 import '../characters/character_detail_screen.dart';
 import '../characters/import_flow.dart';
+import '../characters2d/character2d_preview_screen.dart';
 import '../player/player_screen.dart';
 
 /// Premium dashboard: hero, featured character, stats, recents, favorites
@@ -616,6 +617,27 @@ class _QuickActions extends StatelessWidget {
                   onTap: () => onNavigate(4),
                 ),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              Expanded(
+                child: _QuickActionTile(
+                  icon: Icons.face_rounded,
+                  label: '2D Cartoon Studio',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const Character2DPreviewScreen(characterId: 'bd_farmer_male'),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(child: SizedBox()),
             ],
           ),
         ),

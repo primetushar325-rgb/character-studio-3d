@@ -17,6 +17,7 @@ import 'state/export_provider.dart';
 import 'state/library_provider.dart';
 import 'state/projects_provider.dart';
 import 'state/settings_provider.dart';
+import 'state/library2d_provider.dart';
 import 'state/shell_provider.dart';
 
 Future<void> main() async {
@@ -74,6 +75,7 @@ Future<void> main() async {
           create: (_) => ExportProvider(exportService),
         ),
         ChangeNotifierProvider(create: (_) => ShellProvider()),
+        ChangeNotifierProvider(create: (_) => Library2DProvider()..load()),
       ],
       child: const CharacterStudioApp(),
     ),

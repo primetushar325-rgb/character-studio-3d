@@ -48,23 +48,32 @@ jobs:
       - name: Rename APK
         run: |
           cp build/app/outputs/flutter-apk/app-release.apk \
-             CharacterStudio3D-v1.1.0.apk
-          ls -lh CharacterStudio3D-v1.1.0.apk
+             CharacterStudio3D-v1.2.0.apk
+          ls -lh CharacterStudio3D-v1.2.0.apk
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CharacterStudio3D-apk-v1-1-0
-          path: CharacterStudio3D-v1.1.0.apk
+          name: CharacterStudio3D-apk-v1-2-0
+          path: CharacterStudio3D-v1.2.0.apk
           retention-days: 90
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0
-          name: Character Studio 3D v1.1.0
+          tag_name: v1.2.0
+          name: Character Studio 3D v1.2.0
           body: |
-            **Character Studio 3D v1.1.0** — offline 3D character animation & preview studio.
+            **Character Studio 3D v1.2.0** — offline 2D + 3D character animation studio.
+
+            🆕 v1.2.0 — 2D Cartoon Character System:
+            - 3 original rigged 2D characters: BD Farmer Male, Village Girl, School Teacher
+            - Universal humanoid_v1 rig (20 bones) — animation reuse across characters
+            - Stand / Walk / Run / Sit / Sleep / Talk with start & stop transitions
+            - Full face rig: blinking, eye look, 10 expressions, 16 mouth shapes
+            - Procedural talking (varied mouth timing + gestures) — lip-sync ready
+            - 10 hand gestures, 6 head movements, layered animation + state machine
+            - Character customization (colors/accessories) saved as variants
 
             - Character library: built-in + imported sections, search/sort, favorites, recently used
             - GLB/GLTF import with staged pipeline, validation & skeleton/rig detection
@@ -74,9 +83,9 @@ jobs:
             - Standard actions (Stand/Walk/Run/Sit/Sleep/Talk) with honest missing-state handling
             - Real video export via on-device screen recording (MediaProjection)
 
-            **Install:** download `CharacterStudio3D-v1.1.0.apk` below, allow
+            **Install:** download `CharacterStudio3D-v1.2.0.apk` below, allow
             "install unknown apps" if prompted, and open it. Signed with a debug
             key — safe for testing/sideloading.
-          files: CharacterStudio3D-v1.1.0.apk
+          files: CharacterStudio3D-v1.2.0.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

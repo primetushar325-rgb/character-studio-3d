@@ -19,7 +19,10 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/micro_animations.dart';
 import '../../widgets/premium_button.dart';
 import '../../widgets/premium_dialog.dart';
+import '../../characters2d/engine/face_rig.dart';
+import '../../state/library2d_provider.dart';
 import '../../widgets/three_d_viewer.dart';
+import 'stage2d_body.dart';
 import '../../widgets/thumbnail.dart';
 import '../actions/action_select_screen.dart';
 import '../export/export_screen.dart';
@@ -31,7 +34,7 @@ import '../export/export_screen.dart';
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
     super.key,
-    required this.characterId,
+    this.characterId = '',
     this.initialAnimationName,
     this.projectBackground,
     this.projectCustomHex,
@@ -39,9 +42,22 @@ class PlayerScreen extends StatefulWidget {
     this.projectOrbit,
     this.projectAutoRotate,
     this.openExportOnReady = false,
+    this.character2dId,
+    this.initial2dAction = 'stand',
+    this.initial2dExpr,
+    this.initial2dSpeed = 1.0,
+    this.initial2dDirectionLeft = false,
   });
 
   final String characterId;
+
+  /// When set, the player runs in 2D cartoon mode (Stage2DBody) — the 3D
+  /// GLB pipeline is never touched.
+  final String? character2dId;
+  final String initial2dAction;
+  final Expr? initial2dExpr;
+  final double initial2dSpeed;
+  final bool initial2dDirectionLeft;
   final String? initialAnimationName;
   final BackgroundPreset? projectBackground;
   final String? projectCustomHex;
@@ -71,15 +87,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _panEnabled = true;
   bool _fullscreen = false;
 
+  bool get _is2D => widget.character2dId != null;
+
   @override
   void initState() {
     super.initState();
+    if (_is2D) return; // 2D mode needs no WebView controller.
     _viewer = ThreeDController();
     _eventsSub = _viewer.events.listen(_onViewerEvent);
   }
 
   @override
   void dispose() {
+    if (_is2D) {
+      super.dispose();
+      return;
+    }
     _eventsSub?.cancel();
     try {
       final export = context.read<ExportProvider>();
@@ -208,6 +231,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
+    if (_is2D) {
+      final library2d = context.watch<Library2DProvider>();
+      final character2d = library2d.byId(widget.character2dId!);
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        appBar: AppBar(
+          backgroundColor: AppColors.bg,
+          title: Text(
+            character2d?.name ?? '2D Character',
+            style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textSecondary),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ),
+        body: character2d == null
+            ? Center(
+                child: Text(
+                  'Character data could not be loaded.',
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
+              )
+            : Stage2DBody(
+                character: character2d,
+                initialAction: widget.initial2dAction,
+                initialExpr: widget.initial2dExpr ?? Expr.neutral,
+                initialSpeed: widget.initial2dSpeed,
+                initialDirectionLeft: widget.initial2dDirectionLeft,
+              ),
+      );
+    }
     final library = context.watch<LibraryProvider>();
     final export = context.watch<ExportProvider>();
     final character = library.byId(widget.characterId);

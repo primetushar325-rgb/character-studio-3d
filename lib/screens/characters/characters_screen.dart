@@ -5,6 +5,9 @@ import 'package:share_plus/share_plus.dart' as sharing;
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../models/character.dart';
+import '../../characters2d/character2d_model.dart';
+import '../../characters2d/widgets2d/puppet_stage.dart' show PuppetThumbnail;
+import '../../state/library2d_provider.dart';
 import '../../state/library_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../widgets/character_card.dart';
@@ -19,6 +22,7 @@ import '../../widgets/filter_chip.dart';
 import '../../widgets/thumbnail.dart';
 import 'character_detail_screen.dart';
 import 'import_flow.dart';
+import '../characters2d/character2d_preview_screen.dart';
 import '../player/player_screen.dart';
 
 /// Character library: search, filters, sorting, grouped sections
@@ -134,6 +138,10 @@ class _CharactersScreenState extends State<CharactersScreen> {
                   ],
                 ),
               ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+              sliver: SliverToBoxAdapter(child: _TwoDSection(visible: grouped)),
             ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
@@ -657,5 +665,181 @@ class MultiSliver extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SliverMainAxisGroup(slivers: children.cast());
+  }
+}
+
+/// §20 Character Library section for the original 2D cartoon characters:
+/// thumbnail, name, category, rig/animation/face/talking status and
+/// Preview / Use / Favorite actions, plus saved customization variants.
+class _TwoDSection extends StatelessWidget {
+  const _TwoDSection({required this.visible});
+
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) {
+    final library2d = context.watch<Library2DProvider>();
+    final characters = library2d.all;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Icon(Icons.animation_rounded, color: AppColors.accentAlt, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              '2D Cartoon Characters',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${characters.length}',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Rigged 2D actors with faces, talking and gestures',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 252,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: characters.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, i) {
+              final c = characters[i];
+              return _TwoDCard(character: c, library2d: library2d);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TwoDCard extends StatelessWidget {
+  const _TwoDCard({required this.character, required this.library2d});
+
+  final Character2D character;
+  final Library2DProvider library2d;
+
+  @override
+  Widget build(BuildContext context) {
+    final fav = library2d.isFavorite(character.id);
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      child: SizedBox(
+        width: 232,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Thumbnail (auto-generated from the vector rig).
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                      child: PuppetThumbnail(
+                        spec: character.spec,
+                        palette: character.colors,
+                        accessories: character.accessories,
+                        background: const Color(0xFF1B2130),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.glassOverlay,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.stroke),
+                      ),
+                      child: Text(
+                        character.isVariant ? 'Variant · ${character.spec.category}' : character.spec.category,
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 10.5, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: IconButton(
+                      tooltip: 'Favorite',
+                      icon: Icon(
+                        fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        color: fav ? AppColors.favorite : AppColors.textMuted,
+                        size: 20,
+                      ),
+                      onPressed: () => library2d.toggleFavorite(character.id),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    character.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 14.5),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Rig: Ready   Animations: 6 Core\nFace: Ready   Talking: Ready',
+                    style: TextStyle(color: AppColors.success, fontSize: 11, height: 1.45, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: PremiumButton(
+                          label: 'Preview',
+                          small: true,
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => Character2DPreviewScreen(characterId: character.id),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: PremiumButton(
+                          label: 'Use',
+                          small: true,
+                          style: PremiumButtonStyle.primary,
+                          onPressed: () {
+                            library2d.recordUsage(character.id);
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => PlayerScreen(characterId: '', character2dId: character.id),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

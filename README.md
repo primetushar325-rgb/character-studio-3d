@@ -22,6 +22,73 @@ No backend · No Firebase · No REST APIs · No AI APIs · No login · No intern
 
 ---
 
+## 1. 2D Cartoon Character System (v1.2.0)
+
+Three **original rigged 2D cartoon characters**, built for storytelling:
+
+| Character | Personality | Distinct features |
+|---|---|---|
+| **BD Farmer Male** (35–45) | friendly, hard-working | broad build, moustache, checked lungi, gamcha sash, sandals |
+| **Village Girl** (12–16) | curious, energetic | round face, big eyes, two braids with ribbons, kameez + dupatta |
+| **School Teacher** (30–45) | calm, intelligent | slim formal look, rectangular glasses, notebook, neat moustache |
+
+All artwork is **original vector geometry drawn in code** (no raster assets, no
+copyright issues) — every body part is separable, recolorable and crisp at any
+zoom, and all three characters share one visual universe and one universal rig.
+
+### Rig & animation
+
+- **Universal `humanoid_v1` rig** — 20 bones (root/hips/spine/chest/neck/head +
+  arms + legs) with correctly placed pivots; joint artwork overlaps so
+  rotations never show gaps. All characters use identical bone names, so
+  animations are reusable and Character 04+ needs zero engine changes.
+- **Six core actions**: Stand (breathing idle), Walk, Run, Sit (cross-legged
+  floor sit), Sleep (lying down with Zzz), Talk — each with natural
+  Start → Loop → Stop transitions (Walk_Start/Walk_Loop/Walk_Stop …).
+- **Animation layers**: BASE (locomotion) + UPPER BODY (talk & gestures) +
+  FACE (blink/eyes/mouth/brows) — so *Walk + Talk + Blink + Happy* works
+  without a dedicated clip for every combination.
+- **State machine** with the exact legal transition table; unnatural jumps
+  (Sleep → Run) are auto-routed through Wake → Sit → Idle instead of
+  teleporting.
+- **Hand gestures**: Wave, Greeting, Point L/R/Forward, Open Palm, Thumbs Up,
+  Explain, Thinking, Angry Gesture.
+- **Head & eyes**: Nod, Shake, Tilt L/R, Look L/R.
+
+### Face rig
+
+- Eyes: open/closed/blink + look left/right/up/down (pupils track).
+- Eyebrows: neutral, happy, sad, angry, surprised, worried.
+- **16 mouth shapes** (Neutral, Smile, Open, A E I O U, M/B/P, F/V, L, S, SH,
+  TH, Surprised, Angry, Laugh) — all anchored to the same face position.
+- **10 expressions** (Neutral, Happy, Sad, Angry, Surprised, Scared,
+  Confused, Thinking, Laughing, Crying) — independently controllable while any
+  body animation plays (Walk + Angry, Sit + Talk + Sad …).
+- **Talking** is procedural: randomized syllable timing, accents, phrase
+  pauses, co-articulation between visemes, blink boost, brow accents and
+  occasional gestures with cooldowns — never a mechanical open/close loop.
+  A future voice/lip-sync system can feed real viseme/timing data through
+  `SpeechDriver.setVisemeTimeline` with no rewrite.
+
+### Library, customization & persistence
+
+- Character Library section with thumbnail, name, category and status
+  (Rig: Ready · Animations: 6 Core · Face: Ready · Talking: Ready) +
+  Preview / Use / Favorite.
+- **Customize** colors (shirt, lungi/salwar/trousers, accent, skin, glasses)
+  and accessories (gamcha, dupatta, glasses, notebook) — saved as separate
+  variants ("BD Farmer Male — Blue Shirt"); originals are never modified.
+- Persisted locally: character id/name/palette/accessories/timestamps,
+  favorites, and Recently Used (lastUsedAt + usageCount, most recent first) —
+  everything survives app restarts.
+- **Use Character** loads Character + Action + Expression + Speed + Direction
+  straight into the main player (2D stage mode) — the 3D GLB pipeline is
+  untouched.
+- Thumbnails are auto-rendered from the vector rig (full body, neutral pose,
+  clean background) and always match customization.
+- Performance: one shared rig instance, painter repaints driven by a single
+  ticker, tickers auto-mute off-screen, parts cached per palette.
+
 ## 1. Running the project
 
 Requirements: [Flutter SDK](https://docs.flutter.dev/get-started/install) 3.22+ (validated on 3.24.5), Android SDK 35, JDK 17.
