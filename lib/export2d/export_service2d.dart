@@ -60,9 +60,9 @@ class ExportService2D {
       final pngPaths = <String>[];
       for (var i = 0; i < total; i++) {
         final t = (i / fps) % durationSeconds;
-        ed.scrub(t);
-        // Let the animator evaluate the pose at this time.
-        ed.controller?.tick(0);
+        // PHASE 3: evaluate the story timeline at this frame — the exact same
+        // evaluation the preview uses (spec §22: preview == export).
+        ed.scrubSceneTo((t * 1000).round());
         final image = await renderSceneFrame(ed, width, height);
         final data = await image.toByteData(format: ui.ImageByteFormat.png);
         final file = File('${framesDir.path}/frame_${i.toString().padLeft(4, '0')}.png');

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../backgrounds/backgrounds.dart';
 import '../characters2d/engine/puppet.dart';
 import '../state/editor_provider.dart';
+import '../timeline/story_timeline.dart' show kBackgroundTrackId;
 import 'scene_object.dart';
 
 /// Paints the exact project composition — background (bottom-most) → all
@@ -18,22 +19,23 @@ void paintScene(Canvas canvas, Size size, EditorProvider ed) {
   final bg = ed.background;
 
   // ---- Background (project-level, always the bottom-most layer) -----------
-  if (ed.backgroundVisible) {
+  // Runtime visibility: the background track may carry visibility clips.
+  if (ed.backgroundVisible && !ed.runtimeHidden(kBackgroundTrackId)) {
     _paintBackground(canvas, size, ed, bg);
   }
 
   // ---- Scene objects in z-order (low → high) --------------------------------
   for (final obj in ed.objectsInPaintOrder) {
-    if (!obj.visible) continue;
+    if (!obj.visible || ed.runtimeHidden(obj.id)) continue;
     switch (obj.type) {
       case SceneObjectType.character:
         _paintCharacterObject(canvas, size, ed, obj);
       case SceneObjectType.image:
         _paintImageObject(canvas, size, ed, obj);
       case SceneObjectType.text:
-        _paintTextObject(canvas, size, obj);
+        _paintTextObject(canvas, size, ed, obj);
       case SceneObjectType.shape:
-        _paintShapeObject(canvas, size, obj);
+        _paintShapeObject(canvas, size, ed, obj);
     }
   }
 
@@ -105,7 +107,7 @@ void _paintBackground(Canvas canvas, Size size, EditorProvider ed, BgConfig bg) 
 void _paintCharacterObject(Canvas canvas, Size size, EditorProvider ed, SceneObject obj) {
   final controller = ed.controllerFor(obj);
   if (controller == null) return;
-  final t = obj.transform;
+  final t = ed.evaluatedTransformView(obj);
 
   canvas.saveLayer(Offset.zero & size, Paint()..color = Colors.white.withOpacity(t.opacity));
 
@@ -147,7 +149,7 @@ void _paintImageObject(Canvas canvas, Size size, EditorProvider ed, SceneObject 
     _placeholderBox(canvas, size, obj, const Color(0x33FFFFFF), 'IMAGE');
     return;
   }
-  final t = obj.transform;
+  final t = ed.evaluatedTransformView(obj);
   final h = size.height * 0.5 * t.scaleY;
   final w = h * (image.width / image.height) * (t.scaleX / t.scaleY);
   canvas.saveLayer(
@@ -166,8 +168,8 @@ void _paintImageObject(Canvas canvas, Size size, EditorProvider ed, SceneObject 
   canvas.restore();
 }
 
-void _paintTextObject(Canvas canvas, Size size, SceneObject obj) {
-  final t = obj.transform;
+void _paintTextObject(Canvas canvas, Size size, EditorProvider ed, SceneObject obj) {
+  final t = ed.evaluatedTransformView(obj);
   final scale = size.width / 1920; // text sizes are authored in 1920-space
   final span = TextSpan(
     text: obj.text,
@@ -240,8 +242,8 @@ void _paintTextObject(Canvas canvas, Size size, SceneObject obj) {
   canvas.restore();
 }
 
-void _paintShapeObject(Canvas canvas, Size size, SceneObject obj) {
-  final t = obj.transform;
+void _paintShapeObject(Canvas canvas, Size size, EditorProvider ed, SceneObject obj) {
+  final t = ed.evaluatedTransformView(obj);
   final w = size.width * obj.width * t.scaleX;
   final h = size.height * obj.height * t.scaleY;
 
@@ -296,7 +298,7 @@ void _placeholderBox(Canvas canvas, Size size, SceneObject obj, Color c, String 
 /// Approximate rendered bounds of an object in canvas pixels — used for
 /// SELECTION and hit-testing (same geometry the painters above use).
 Rect objectBounds(SceneObject obj, Size size) {
-  final t = obj.transform; // used by every branch below
+  final t = obj.transform; // selection geometry: static transform (paused)
   final cx = size.width * t.x;
   final cy = size.height * t.y;
   switch (obj.type) {

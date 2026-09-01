@@ -19,9 +19,12 @@ class Syllable {
 /// future voice/lip-sync system can simply push real viseme/timing data
 /// through [setVisemeTimeline] and everything downstream keeps working.
 class SpeechDriver {
-  SpeechDriver({int seed = 7}) : _rng = math.Random(seed);
+  SpeechDriver({this.seed = 7}) : _rng = math.Random(seed);
 
   final math.Random _rng;
+
+  /// Fixed seed — [seekTo] rebuilds identical phrases from it.
+  final int seed;
 
   bool active = false;
   double _t = 0;
@@ -75,29 +78,62 @@ class SpeechDriver {
     _sample();
   }
 
-  void _buildPhrase() {
+  /// Deterministic random access: rebuilds the phrase timeline from the FIXED
+  /// seed so any talk time t maps to the same viseme regardless of evaluation
+  /// history (timeline scrub, export frames → preview == export).
+  void seekTo(double t) {
+    if (!active) return;
+    if (t < 0) t = 0;
+    final rng = math.Random(seed);
+    var covered = 0.0;
+    for (var i = 0; i < 100000; i++) {
+      final ph = _synthesizePhrase(rng);
+      if (covered + ph.phraseEnd > t) {
+        _timeline = ph.timeline;
+        _phraseEnd = ph.phraseEnd;
+        _t = t - covered;
+        _sample();
+        return;
+      }
+      covered += ph.phraseEnd;
+    }
+    // Effectively unreachable (guards pathological seeds only).
+    _timeline = const [];
+    _phraseEnd = 1;
+    _t = 0;
+    _sample();
+  }
+
+  /// Builds one phrase from [rng] (pure — no instance state mutated).
+  ({List<Syllable> timeline, double phraseEnd}) _synthesizePhrase(
+      math.Random rng) {
     // Phrase: 3–9 syllables with varied durations, MBP start, then a pause.
-    final count = 3 + _rng.nextInt(7);
+    final count = 3 + rng.nextInt(7);
     final syllables = <Syllable>[];
     var t = 0.02;
     for (var i = 0; i < count; i++) {
       final String viseme;
-      if (i == 0 && _rng.nextBool()) {
+      if (i == 0 && rng.nextBool()) {
         viseme = 'MBP';
-      } else if (_rng.nextDouble() < 0.58) {
-        viseme = _vowels[_rng.nextInt(_vowels.length)];
+      } else if (rng.nextDouble() < 0.58) {
+        viseme = _vowels[rng.nextInt(_vowels.length)];
       } else {
-        viseme = _consonants[_rng.nextInt(_consonants.length)];
+        viseme = _consonants[rng.nextInt(_consonants.length)];
       }
-      final dur = 0.09 + _rng.nextDouble() * 0.13;
-      final accentHere = _rng.nextDouble() < 0.28 && i > 0;
+      final dur = 0.09 + rng.nextDouble() * 0.13;
+      final accentHere = rng.nextDouble() < 0.28 && i > 0;
       syllables.add(Syllable(viseme, t, dur, accentHere));
       t += dur;
-      if (_rng.nextDouble() < 0.14) t += 0.05 + _rng.nextDouble() * 0.07; // micro pause
+      if (rng.nextDouble() < 0.14) t += 0.05 + rng.nextDouble() * 0.07; // micro pause
     }
-    final pause = 0.35 + _rng.nextDouble() * 0.85;
-    _timeline = syllables;
-    _phraseEnd = t + pause;
+    final pause = 0.35 + rng.nextDouble() * 0.85;
+    return (timeline: syllables, phraseEnd: t + pause);
+  }
+
+  void _buildPhrase() {
+    final ph = _synthesizePhrase(_rng);
+    _timeline = ph.timeline;
+    _phraseEnd = ph.phraseEnd;
     _t = 0;
     if (_wall - _lastGestureAt > 3.5 && _rng.nextDouble() < 0.35) {
       _lastGestureAt = _wall;
@@ -141,7 +177,7 @@ class SpeechDriver {
       out = FaceParams.lerp(a, b, (u - 0.65) / 0.35);
     }
     // Tiny jitter so identical visemes never look identical twice.
-    final jitter = (_rng.nextDouble() - 0.5).abs() * 0.06;
+    final jitter = (math.sin(_t * 43.7) * .5 + .5).abs() * 0.06;
     mouth = FaceParams.lerp(out, MouthShapes.open, jitter);
     accent = cur.accent ? math.max(0, 1 - (_t - cur.start) / 0.28) : accent * 0.9;
   }

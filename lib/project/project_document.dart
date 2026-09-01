@@ -3,6 +3,7 @@ import 'package:flutter/material.dart' show Color;
 
 import '../backgrounds/backgrounds.dart';
 import '../scene/scene_object.dart';
+import '../timeline/story_timeline.dart';
 import '../state/editor_provider.dart'
     show CharacterTransform, EditorProvider;
 
@@ -247,6 +248,8 @@ void captureEditorIntoProject(EditorProvider ed, ProjectDocument doc) {
     ..scene = {
         'objects': [for (final o in ed.objects) o.toJson()],
       }
+    // Story timeline (Phase 3): duration, tracks, clips, keyframes.
+    ..timeline = ed.timeline.toJson()
     // Legacy single-character summary kept so Phase-1 builds still open the
     // project with at least the first character.
     ..characterId = firstChar?.characterId
@@ -355,6 +358,16 @@ Future<void> applyProjectRuntimeToEditor(EditorProvider ed, ProjectDocument doc)
   for (final o in ed.objects) {
     if (o.type == SceneObjectType.image) ed.imageFor(o);
   }
+
+  // Story timeline (Phase 3): restore exactly what was saved; projects saved
+  // before Phase 3 (or without timeline content) get a clean 20s default.
+  // Tracks pointing at objects that no longer exist are pruned safely.
+  ed.timeline = StoryTimeline.fromJson(doc.timeline);
+  ed.timeline.pruneTo(ed.objects.map((o) => o.id).toSet());
+  ed.clock
+    ..durationMs = ed.timeline.durationMs
+    ..seek(0);
+  ed.applySceneTime(0);
   ed.refresh();
 }
 

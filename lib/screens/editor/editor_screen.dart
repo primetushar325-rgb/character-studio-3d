@@ -9,7 +9,6 @@ import '../../export2d/export_service2d.dart';
 import '../../scene/scene_renderer.dart';
 import '../../project/project_document.dart';
 import '../../scene/scene_object.dart';
-import '../../scene/scene_renderer.dart' show objectBounds;
 import '../../state/editor_provider.dart';
 import '../../state/projects_provider.dart';
 import '../../widgets/premium_button.dart';
@@ -17,6 +16,7 @@ import '../characters/character_picker_sheet.dart';
 import 'background_picker.dart';
 import 'export_share_bridge.dart';
 import 'panels.dart';
+import 'timeline_panel.dart';
 
 /// The professional 16:9 2D animation editor. Canvas stays true 16:9 at any
 /// screen size; all controls live outside the composition.
@@ -130,7 +130,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                       children: [
                         _toolbar(ed),
                         Expanded(child: InteractiveViewer(transformationController: _transformationController, minScale: 0.5, maxScale: 5, child: Center(child: canvas))),
-                        const SizedBox(height: 8),
+                        TimelinePanel(ed: ed),
                       ],
                     ),
                   ),
@@ -141,6 +141,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 children: [
                   _toolbar(ed),
                   InteractiveViewer(transformationController: _transformationController, minScale: 0.5, maxScale: 5, child: canvas),
+                  TimelinePanel(ed: ed),
                   Expanded(child: panels),
                 ],
               ),
@@ -159,13 +160,16 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       borderRadius: BorderRadius.circular(12),
       child: LayoutBuilder(builder: (context, cbox) {
         final csize = Size(cbox.maxWidth, cbox.maxHeight);
+        final playing = ed.clock.isPlaying;
         return Stack(
           fit: StackFit.expand,
           children: [
             CustomPaint(size: Size.infinite, painter: _ScenePainter(ed)),
 
             // ---- Object interaction: tap-select + drag-move ----------------
-            GestureDetector(
+            // Disabled during timeline playback (spec §24: no conflicts).
+            if (!playing) ...[
+              GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapUp: (d) {
                 final obj = hitTestObjects(ed, d.localPosition, csize);
@@ -181,15 +185,19 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               },
               onDoubleTap: () {
                 final id = ed.selectedId;
-                if (id != null) ed.updateTransform(id, (t) {
-                  t.x = 0.5;
-                  t.rotation = 0;
-                });
+                if (id != null) {
+                  ed.updateTransform(id, (t) {
+                    t.x = 0.5;
+                    t.rotation = 0;
+                  });
+                }
               },
             ),
 
+            ],
+
             // ---- Selection overlay (bounds + handles + delete) -------------
-            if (ed.selected != null)
+            if (ed.selected != null && !playing)
               _SelectionOverlay(
                 ed: ed,
                 object: ed.selected!,
@@ -367,7 +375,7 @@ class _ExportDialogState extends State<ExportDialog> {
   }
   int _fps = 30;
   int _quality = 2;
-  int _loops = 2;
+  int _loops = 1;
   ExportProgress? _progress;
   ExportResult? _result;
   bool _running = false;
@@ -375,8 +383,9 @@ class _ExportDialogState extends State<ExportDialog> {
   @override
   Widget build(BuildContext context) {
     final ed = context.watch<EditorProvider>();
-    final clipDur = ed.controller?.animator.clipDuration ?? 2;
-    final duration = clipDur * _loops;
+    // PHASE 3: exports render the story timeline, not a single clip.
+    final sceneDur = ed.durationMs / 1000.0;
+    final duration = sceneDur * _loops;
     final estimate = _estimate(duration);
     // Presets follow the project orientation (16:9 / 9:16 / 1:1); smaller
     // presets stay available exactly as before for landscape.
@@ -509,7 +518,7 @@ class _ExportDialogState extends State<ExportDialog> {
         height: _h,
         fps: _fps,
         quality: _quality,
-        durationSeconds: ed.controller?.animator.clipDuration ?? 2,
+        durationSeconds: ed.durationMs / 1000.0,
         loops: _type == ExportType.png ? 1 : _loops,
         onProgress: (p) => setState(() => _progress = p),
       );

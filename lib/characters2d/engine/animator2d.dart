@@ -217,9 +217,10 @@ class PuppetAnimator {
   }
 
   /// Timeline scrubbing: jump the base clip to an absolute time.
-  void scrub(double t) {
+  void scrub(double t, {double? faceTime}) {
     final clip = clips[_clipId] ?? ClipLibrary.get(_clipId);
     _t = clip.loop ? t % clip.duration : t.clamp(0.0, clip.duration);
+    if (faceTime != null) _clock = faceTime; // talk-mouth cycle = scene time
     _fade = 0;
     _prevClipId = null;
   }

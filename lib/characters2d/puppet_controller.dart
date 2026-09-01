@@ -33,6 +33,11 @@ class PuppetController extends ChangeNotifier {
   PuppetFrameData? _frame;
   double _cycleT = 0;
 
+  /// When set, [frame] returns this instead of the internal frame — used by
+  /// the timeline evaluator to compose deterministic blended poses.
+  PuppetFrameData? frameOverride;
+  void clearFrameOverride() => frameOverride = null;
+
   static const Map<String, double> _cycleLengths = {
     'idle': 4.2, 'walk': 1.05, 'run': 0.62, 'sit': 1.2, 'sleep': 4.6,
     'talk': 7.7, 'jump': 1.15, 'wave': 1.5, 'action': 1.3, 'happy': 1.2,
@@ -46,7 +51,11 @@ class PuppetController extends ChangeNotifier {
 
   double get speed => animator.speed;
 
+  /// Source length of an action's clip, in seconds (timeline default spans).
+  static double cycleLengthSeconds(String id) => _cycleLengths[id] ?? 4.2;
+
   PuppetFrameData get frame =>
+      frameOverride ??
       _frame ??
       PuppetFrameData(
         pose: idlePose(0.35),
