@@ -1,281 +1,131 @@
-# Character Studio 3D
+# 2D Character Studio — v2.0
 
-**An offline 3D character animation & preview studio for Android.**
+**A 100% offline, professional 16:9 2D character rigging & animation editor.**
+No 3D. No network. No accounts. Everything runs on-device.
 
-Browse GLB characters, detect their embedded animations automatically, preview
-them in an interactive 3D viewer, import new models from device storage, save
-favorites and recents, build animation projects, and export real videos —
-**all on-device, with zero network access**.
+> v2.0 is a full 3D→2D reversal: all GLB/GLTF/WebGL pipelines are gone. The app is now a
+> 2D skeletal animation studio with a real frame-rendered video export.
 
-```
-No backend · No Firebase · No REST APIs · No AI APIs · No login · No internet
-```
+---
 
-| | |
+## What's inside
+
+| System | What it does |
 |---|---|
-| Platform | Android (minSdk 29 / Android 10+, targetSdk 35) |
-| Framework | Flutter (Dart 3) + Kotlin native layer |
-| 3D engine | `<model-viewer>` / three.js — **bundled as an app asset, fully offline** |
-| State management | Provider (single, consistent solution) |
-| Local storage | SharedPreferences (favorites, recents, settings, metadata, projects) |
-| Video export | Real on-device recording via Android MediaProjection → H.264 MP4 → MediaStore |
+| **2D bone rigs** | Hierarchical bones with pivots at anatomical joints. `humanoid_v1` (Root→Hips→Torso→Neck→Head→arms/legs, 20+ bones) and `quadruped_v1` (Root→Body→Neck/Head→4×(Upper/Lower/Paw)→Tail×4, 22 bones). Children follow parents — rotating a thigh moves the knee, not the hips. |
+| **14 standard animations** | Idle, Walk, Run, Sit, Sleep, Talk, Jump, Wave, Action, Happy, Sad, Think, Turn, Fall — every character, same engine. Humanoid walk is a real gait (contact/down/passing/up, counter-swinging arms, weight shift, head stabilization); quadruped walk is the diagonal pattern FL+BR → FR+BL with body bounce, head counter-nod, tail follow-through and ear flop. |
+| **Character engine** | Keyframe clips with Linear/EaseIn/EaseOut/EaseInOut per-bone tracks, a locomotion state machine (walk_start/walk_stop blending), procedural talk visemes + blink scheduler, layered gestures. Any character can replace the Tiger — no per-character code. |
+| **Characters** | Tiger (default, quadruped), BD Farmer, Village Girl, School Teacher (humanoids) + unlimited prompt-generated variants + imported PNG characters. |
+| **16:9 editor** | 1920×1080 default (1280×720 / 854×480 presets), ratio locked. Pinch zoom, pan, drag reposition, fullscreen. Composition layers: Background / Character / Character Shadow / Effects / Foreground with show-hide + lock. |
+| **Backgrounds** | 15 built-ins across Nature/Village/City/Room/Office/Street/Forest/Farm/School/Studio/Night/Day/Fantasy + gallery upload (PNG/JPG/WEBP, Cover/Contain/Fit + scale/offset), gradients, solids, transparent. Brightness/contrast/blur/opacity per background. |
+| **Timeline** | Second marks, playhead, keyframe dots, loop range, frame stepping, speed 0.25–2×. |
+| **REAL video export** | The composition is **rendered frame-by-frame** (timeline → rig solver → background → character → effects → composite) and encoded with **FFmpeg (libx264)** to MP4. *Never* screen recording — the exported file contains exactly the 16:9 canvas, zero editor UI. Also GIF (pure-Dart GIF89a encoder with median-cut palette + Floyd–Steinberg dithering), PNG, and PNG sequences. 1080p/720p/480p × 24/30/60fps × Low→Ultra quality. |
+| **Character export** | One self-contained HTML file (canvas rig solver + animations + player UI, opens in any browser, zero dependencies) and a portable `character.json`. |
 
 ---
 
-## 1. Running the project
+## Import a PNG character
 
-Requirements: [Flutter SDK](https://docs.flutter.dev/get-started/install) 3.22+ (validated on 3.24.5), Android SDK 35, JDK 17.
+1. Editor → **Character** panel → **Import PNG** (or the Characters tab → **PNG**).
+2. Pick a PNG/JPG/WEBP from your gallery.
+3. Choose the body type: **Humanoid (2 arms, 2 legs)** or **Quadruped (4 legs + tail)**.
+4. The artwork is copied into the app's private storage and mounted **unchanged** on the
+   matching cutout rig — the full-body artwork is preserved exactly (design, colors,
+   proportions are never altered); the rig animates the whole cutout with a correct
+   gait, breathing, squash & stretch and follow-through.
+5. The character appears in your library and gets all 14 standard animations.
+
+Tips: use artwork with a **transparent background**, standing pose, full body visible,
+arms not fused to the torso. Pixel-art and flat-cartoon styles animate best.
+
+## Generate a character from a prompt
+
+1. Character panel → **From Prompt**.
+2. Describe the character, e.g. `"orange cartoon tiger"`, `"blue village girl"`,
+   `"green farmer with lungi"`.
+3. The studio picks the closest base template (feline→Tiger rig, human→villager rigs),
+   recolors it from your color words, and saves it as a new variant. Built-ins are
+   never modified.
+
+## character.json format
+
+```json
+{
+  "name": "Tiger",
+  "version": "1.0",
+  "type": "2D_RIGGED_CHARACTER",
+  "rigKind": "quadruped_v1",
+  "canvas": { "width": 1080, "height": 1080 },
+  "palette": { "fur": "#f09a2e", "stripe": "#2e2620", "...": "..." },
+  "bones": [ { "name": "flUpper", "parent": "body", "attach": [0,38],
+               "restAngle": 90, "length": 30 } ],
+  "layers": [ { "bone": "body", "z": 4, "shapes": [ ... ] } ],
+  "animations": [
+    { "id": "walk", "duration": 1.05, "loop": true,
+      "tracks": [ { "bone": "flUpper",
+                    "keyframes": [ { "time": 0, "rotation": -26, "easing": "easeInOut" } ] } ] }
+  ]
+}
+```
+
+Baked at 30 fps from the live clip library; every one of the 14 standard animations is
+included. Reusable in any engine that can lerp numbers.
+
+## Single-file HTML export
+
+Character panel → **EXPORT CHARACTER → Single-file HTML** writes one `.html` file that
+embeds the character JSON plus a complete canvas rig solver (bones, easing, shapes,
+face rig, blink scheduler, direction flip) and a player: animation buttons
+(IDLE WALK RUN SIT SLEEP TALK JUMP WAVE + more), play/pause/stop, loop, timeline,
+speed, prev/next frame, fullscreen, reset. Open it in any browser — no server, no
+dependencies.
+
+---
+
+## Offline & privacy
+
+* No backend, no Firebase, no REST, no analytics, no URLs — airplane-mode capable.
+* Storage via MediaStore (`Movies/2DCharacterStudio`); no storage permission needed
+  (Android 10+ scoped storage).
+* Imported files are treated as untrusted data: decoded read-only, stored inside app
+  directories, validated before use.
+
+## Build
 
 ```bash
-cd character_studio_3d
 flutter pub get
-flutter run                # on a connected device / emulator
+flutter test
+flutter build apk --release --target-platform android-arm64   # 46 MB arm64
+flutter build apk --release --target-platform android-arm -PtargetAbi=armeabi-v7a
 ```
 
-The analysis is clean: `flutter analyze` → **No issues found**.
-Both debug and release APKs build successfully (validated):
+Requires Flutter 3.24.x, JDK 17, Android SDK 35. Video encoding is
+`ffmpeg_kit_flutter_new_min_gpl` (libx264, offline, on-device).
 
-```bash
-flutter build apk --release          # single universal APK
-flutter build apk --split-per-abi    # smaller per-device APKs
-```
-
-> Output: `build/app/outputs/flutter-apk/app-release.apk`.
-> The release build is currently signed with the **debug** key — replace the
-> `signingConfig` in `android/app/build.gradle` with your own keystore before
-> publishing.
-
----
-
-## 2. Adding bundled sample GLB files
-
-1. Drop any `.glb` file into `assets/characters/` (optionally with a matching
-   `<name>.png` thumbnail).
-2. That's it. `assets/characters/` is already declared in `pubspec.yaml`, and
-   the app **scans the asset manifest dynamically** at first launch — no Dart
-   code changes, no hardcoded lists.
-
-On first start, every bundled GLB is copied once into the app's private
-character directory and marked as a "Sample". Deleting a sample in the app
-removes it permanently (it is not re-copied).
-
-Bundled samples in this repo (both legal, redistribution-friendly):
-
-| Model | Animations | License |
-|---|---|---|
-| Fox | Survey · Walk · Run | CC0 1.0 (PixelMannen / TomKranis, via Khronos glTF samples) |
-| CesiumMan | 1 walk cycle (unnamed clip → "Animation 1") | CC-BY 4.0 (Cesium GS, via Khronos glTF samples) |
-
----
-
-## 3. How users import GLB files
-
-**Characters → Import GLB** (or Home → Quick Actions → Import GLB):
-
-1. The Android **system file picker** opens (Storage Access Framework — no
-   storage permission required).
-2. Select a `.glb` (or a `.gltf` **together with** its `.bin` + texture files).
-3. The app validates the file (magic bytes, glTF version, chunk structure,
-   250 MB limit), converts `.gltf` → self-contained `.glb` if needed, copies
-   it into `documents/characters/`, parses animation clips, and registers it
-   in the library — including a sibling thumbnail if you picked
-   `model.png` alongside `model.glb`.
-4. A success dialog reports the detected animation count; failures show a
-   specific, honest error (e.g. missing `.bin`, truncated file, not a GLB).
-
-Imported characters are ordinary files in the characters directory, so they
-are discovered automatically on every launch — `dragon.glb`, `boy.glb`,
-`monster.glb` … all work with **zero code changes** (Meshy/mixamo/Blender
-exports with named clips are fully supported).
-
----
-
-## 4. Supported animation naming
-
-Animation names are read from the GLB itself — nothing is assumed. The
-normalizer (`lib/core/utils/animation_names.dart`) maps raw clip names to
-friendly labels while **always preserving the original identifier** internally:
-
-| Raw clip name(s) in the GLB | Displayed as | Icon |
-|---|---|---|
-| `Walk`, `walk`, `WALKING`, `Walk_01`, `walk_cycle` | Walk | walking |
-| `Run`, `running`, `Jog` | Run | running |
-| `Idle`, `Standby`, `Breathing`, `TPose` | Idle | person |
-| `Armature\|mixamo.com\|Take 001\|Walk` (mixamo) | Walk | walking |
-| `Sit`, `SitDown`, `sit_idle` | Sit | chair |
-| `Sleep`, `Lying`, `Rest` | Sleep | moon |
-| `Talk`, `Speaking`, `Conversation` | Talk | speech |
-| `Dance`, `Attack`, `Jump`, `Wave`, `Cry`, `Laugh`, `Fight`, `Fall`, `Clap`, `Punch`, `Kick`, `Die`, `Fly`, `Swim`, … | same, title-cased | mapped per action |
-| Anything else (`ZombieAttackSlow`) | `Zombie Attack Slow` | generic animation icon |
-| *(unnamed clip)* | `Animation 1`, `Animation 2`… | generic |
-
-Unknown clips are **never hidden** — every clip embedded in the file is listed
-and playable.
-
----
-
-## 5. How animation detection works
-
-Two independent layers, both offline:
-
-1. **Primary — pure-Dart GLB parser** (`lib/services/glb_parser_service.dart`).
-   A GLB is a 12-byte header + chunks; the first `JSON` chunk contains the full
-   glTF scene graph including the `animations` array. The parser walks the
-   container, validates the structure, and extracts:
-   - every animation clip name,
-   - each clip's duration (max `accessor.max` of its sampler inputs),
-   - node/mesh/material/texture/skin counts and the exporter (`asset.generator`).
-   Parsing runs in a background isolate (`compute`) so the UI never janks, and
-   it powers the whole library grid, search, stats and details screens **before
-   any model is rendered**.
-2. **Verification — the live engine.** When a character opens, model-viewer
-   reports `availableAnimations` over the JS bridge, which is cross-checked
-   against the parsed list. A mismatch (e.g. clip cannot be played) surfaces
-   the "Animation unavailable" card with Try Again / Choose Another Animation.
+## Architecture (lib/)
 
 ```
-GLB file ──► GLBParserService ──► Character (+ AnimationClips)
-                                     │
-Player ──► ThreeDController ──► WebView(model-viewer) ──► three.js/WebGL
-                 ▲   ▲                                   (served from the
-                 │   └── JS bridge events (load/tick/error/thumbnail)   on-device
-                 └── playAnimation(model, name, loop)      loopback server)
+characters2d/
+  engine/    rig2d, pose2d, animator2d (keyframes + easing), clips + quadruped_clips
+             (14+ animations each), state_machine2d, face_rig, shapes, palette_resolver
+  art/       tiger, bd_farmer, village_girl, school_teacher, body_kit, draw_utils,
+             palettes, character_catalog (dynamic registry)
+  widgets2d/ puppet stage + thumbnails
+  puppet_controller.dart   playback, talk layer, direction, gestures
+  character_json.dart      portable character.json builder
+  html_export.dart         single-file HTML exporter
+  png_character.dart       PNG cutout import
+backgrounds/  15 painted backgrounds + image/gradient/solid modes (BgConfig)
+scene/        scene_renderer — one 16:9 frame → ui.Image (used by editor AND export)
+export2d/     export_service2d (MP4/PNG/sequence) + gif_encoder (pure Dart GIF89a)
+screens/      editor (canvas, panels, timeline, export dialog), characters, settings
+state/        editor_provider, library2d_provider, shell_provider (Provider only)
 ```
 
-Architecture roles (see §10 for the file map): `CharacterRepository` owns
-library state, `AnimationService` normalizes/aggregates animations,
-`ThreeDController` is the reusable generic `AnimationPlayer`, `ThreeDViewer`
-is the render surface, `CharacterService`/`GLBParserService` handle discovery
-and parsing.
+## Tests
 
----
-
-## 6. Building the APK
-
-```bash
-flutter build apk --release        # universal APK (~59 MB)
-flutter build apk --split-per-abi  # ~20-25 MB per architecture
-```
-
-Android Studio → *Build → Generate Signed Bundle/APK* for store-ready builds
-(set your keystore in `android/app/build.gradle` first).
-Build machine needs ~8 GB RAM for the release build (standard Flutter/Gradle
-requirements).
-
----
-
-## 7. Known limitations of the 3D engine
-
-model-viewer (three.js in a WebView) is a deliberate choice: it is the only
-mature, offline GLB renderer with skeletal animation, orbit camera and PBR
-lighting available to Flutter today. Honest limitations:
-
-- **glTF 2.0 only.** glTF 1.x / COLLADA / FBX / OBJ are not supported
-  (`.gltf` 2.x is auto-converted to GLB on import).
-- **Animation features:** loop playback, per-clip selection, play/pause/seek,
-  speed (`timeScale`) and morph-target animations are supported; **blending
-  two clips simultaneously and root-motion retargeting are not**.
-- **KTX2 textures require the meshoptimizer codec path** — most exports work;
-  exotic texture formats (e.g. some DDS variants) may fail with the "Animation
-  unavailable" card.
-- Very large models (> ~80 MB) import with a warning and may load slowly or
-  skip on low-RAM devices; > 250 MB is refused.
-- The renderer draws at device resolution inside a WebView; on very old GPUs
-  frame rate drops with heavy scenes (the app shows loading states and never
-  hard-crashes on WebGL context loss).
-- Backgrounds "Transparent" is displayed as a checkerboard on-screen (true
-  alpha export only exists for the PNG poster, which does support
-  transparency).
-
-## 8. Video export implementation details
-
-Nothing is faked. The pipeline is a real on-device recording:
-
-1. WebView frame buffers are not directly accessible from Dart, so the app
-   uses Android's **MediaProjection** API: a native foreground service
-   (`ExportRecordingService.kt`, type `mediaProjection`) mirrors the app
-   window into a hardware **MediaRecorder** (H.264 MP4) at the chosen
-   resolution (720p/1080p), FPS (24/30/60) and duration (5/10/15/30 s).
-2. The MP4 is written **directly into MediaStore**
-   (`Movies/Character Studio 3D`) — no storage permission needed on
-   Android 10+; the file is visible in every gallery app.
-3. The player shows a live `REC` badge with elapsed/remaining time; recording
-   auto-stops after the chosen duration or via the Stop button / notification
-   action.
-4. On success the app reports the real file size and offers **Open / Share /
-   Delete** on the actual content URI. If the user denies the projection
-   permission, or the encoder fails, a clear error is shown — the app never
-   claims success without a file.
-
-Additionally, the 📷 button in the player captures the **current frame as a
-real PNG** (model-viewer `toDataURL`) and saves it to
-`Pictures/Character Studio 3D` — this is also how automatic thumbnails are
-generated the first time a character plays.
-
----
-
-## 9. Offline-first design
-
-- The 3D engine (`model-viewer.min.js`, ~935 KB) ships inside the APK and is
-  served to the renderer by a **loopback HTTP server** (127.0.0.1, random
-  port) — no CDN, ever. `network_security_config.xml` permits cleartext
-  **only** to 127.0.0.1/localhost; all remote cleartext stays blocked.
-  The `INTERNET` permission exists solely for the loopback socket; the app
-  works in airplane mode (validated by design — no remote URL appears
-  anywhere in the code).
-- Favorites, recents (last 40 uses), sort preference, settings, project data
-  and character metadata live in SharedPreferences; the characters
-  themselves live in the app-private documents folder.
-
-## 10. Project structure
-
-```
-lib/
-├── main.dart / app.dart                  bootstrap, providers, theme, onboarding gate
-├── core/      theme · constants · utils (formatters, animation_names)
-├── models/    character · animation_clip · recent_entry · studio_project · viewer_enums
-├── services/  glb_parser · gltf_converter · character · animation · thumbnail
-│              storage · viewer_server (loopback) · export (native bridge)
-├── repositories/ character_repository · project_repository
-├── state/     settings_ · library_ · projects_ · export_ · shell_provider
-├── navigation/app_shell.dart             IndexedStack + bottom navigation
-├── screens/   onboarding · home · characters (+ import) · actions · player
-│              export · favorites · projects (+ wizard) · settings
-└── widgets/   glass_card · premium_button · character_card · animation_card
-               three_d_viewer(+ThreeDController) · search_bar · filter_chip
-               empty_state · loading_view · error_view · premium_dialog · …
-
-android/app/src/main/kotlin/…/
-├── MainActivity.kt            MethodChannel bridge (recording, gallery, open/share/delete)
-└── ExportRecordingService.kt  MediaProjection foreground service → MP4 → MediaStore
-```
-
-## 11. Acceptance-test matrix (spec §51)
-
-| # | Test | Where it passes |
-|---|---|---|
-| 1 | Launch offline → home loads | No network calls anywhere; all resources in-APK |
-| 2 | Characters → sample GLBs appear | Bundled Fox + CesiumMan installed on first launch |
-| 3 | Animations detected | GLB JSON-chunk parser + engine verification |
-| 4/5 | Walk / Run plays | Fox.glb ships `Walk` and `Run` clips |
-| 6 | Touch rotate + pinch zoom | model-viewer `camera-controls`, double-tap resets |
-| 7 | Favorite persists after restart | SharedPreferences |
-| 8 | Recent (character + Walk) persists | Recents store keyed by character+clip |
-| 9 | Import GLB → appears automatically | SAF picker → validated copy → directory scan |
-| 10 | Imported model's real animations detected | Same parser, zero per-character code |
-| 11 | Plays without internet | Entire pipeline is local |
-| 12 | Delete imported character | File + metadata + recents removed |
-| 13 | Rename updates display name | Metadata-only rename (GLB untouched) |
-| 14 | Export produces a real video | MediaProjection → MP4 → MediaStore (verified path) |
-| 15 | Airplane mode repeat | Works — see §9 |
-
-## 12. Troubleshooting
-
-- **Blank 3D view** → the loopback server failed to start (extremely rare);
-  reopening the screen restarts it.
-- **"Not a GLB" on import** → re-export with *embed textures* (single .glb),
-  or select the .gltf **plus** its .bin/textures together.
-- **Release build OOM on a small machine** → keep the default
-  `org.gradle.jvmargs=-Xmx4G` and close other applications.
-
-See `CREDITS.md` for all bundled third-party assets and their licenses.
+`flutter test` — 33 tests covering the rig hierarchy, gait mechanics (walk phase
+alternation, counter-swing, bounce; quadruped diagonal pairs), state machine
+transitions, talk/blink layering, persistence round-trips, the GIF encoder
+(GIF89a header, NETSCAPE loop, palette) and the character.json contract
+(all 14 animations, keyframe track shape, diagonal-pair phase).

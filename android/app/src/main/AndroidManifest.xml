@@ -1,20 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Loopback-only networking: the app runs a tiny on-device HTTP server that
-         serves the 3D engine and character files to the local WebView renderer.
-         No remote host is ever contacted; everything works in airplane mode. -->
+    <!-- 100% offline 2D editor. INTERNET is only required because the
+         ffmpeg-kit bundler references it; the app itself never contacts
+         any remote host and works fully in airplane mode. -->
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- Real on-device video export (MediaProjection screen recorder) -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name="${applicationName}"
-        android:label="Character Studio 3D"
+        android:label="2D Character Studio"
         android:icon="@mipmap/ic_launcher"
-        android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="true">
 
         <activity
@@ -22,7 +16,6 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
-            android:screenOrientation="portrait"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
@@ -37,12 +30,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- Foreground service that performs the real screen recording -->
-        <service
-            android:name=".ExportRecordingService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
 
         <meta-data
             android:name="flutterEmbedding"

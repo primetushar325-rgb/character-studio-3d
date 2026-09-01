@@ -26,6 +26,11 @@ android {
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Native libs (ffmpeg) ship all ABIs — restrict packaging.
+        // CI builds per-ABI via -PtargetAbi; local default arm64-v8a.
+        ndk {
+            abiFilters += (project.findProperty('targetAbi') ?: 'arm64-v8a').toString().split(',').collect { it.trim() }
+        }
     }
 
     buildTypes {

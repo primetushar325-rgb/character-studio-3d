@@ -42,39 +42,49 @@ jobs:
       - name: Ensure gradlew is executable
         run: chmod +x android/gradlew
 
-      - name: Build release APK
-        run: flutter build apk --release
-
-      - name: Rename APK
+      - name: Build release APKs (arm64 + armeabi-v7a)
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk \
-             CharacterStudio3D-v1.0.0.apk
-          ls -lh CharacterStudio3D-v1.0.0.apk
+          flutter build apk --release --target-platform android-arm64
+          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.0.0-arm64-v8a.apk
+          flutter build apk --release --target-platform android-arm -PtargetAbi=armeabi-v7a
+          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.0.0-armeabi-v7a.apk
+          ls -lh *.apk
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CharacterStudio3D-apk
-          path: CharacterStudio3D-v1.0.0.apk
+          name: 2DCharacterStudio-apk-v2-0-0
+          path: 2DCharacterStudio-v2.0.0-*.apk
           retention-days: 90
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: Character Studio 3D v1.0.0
+          tag_name: v1.2.0
+          name: Character Studio 3D v1.2.0
           body: |
-            **Character Studio 3D** — offline 3D character animation & preview studio.
+            **Character Studio 3D v1.2.0** — offline 2D + 3D character animation studio.
 
-            - Browse, import and animate GLB characters fully on-device
-            - Automatic animation detection from any GLB
-            - Interactive 3D viewer (rotate / zoom / double-tap reset)
-            - Favorites, Recently Used, Projects — all persisted locally
+            🆕 v1.2.0 — 2D Cartoon Character System:
+            - 3 original rigged 2D characters: BD Farmer Male, Village Girl, School Teacher
+            - Universal humanoid_v1 rig (20 bones) — animation reuse across characters
+            - Stand / Walk / Run / Sit / Sleep / Talk with start & stop transitions
+            - Full face rig: blinking, eye look, 10 expressions, 16 mouth shapes
+            - Procedural talking (varied mouth timing + gestures) — lip-sync ready
+            - 10 hand gestures, 6 head movements, layered animation + state machine
+            - Character customization (colors/accessories) saved as variants
+
+            - Character library: built-in + imported sections, search/sort, favorites, recently used
+            - GLB/GLTF import with staged pipeline, validation & skeleton/rig detection
+            - Animation alias detection with confidence scores + manual mapping editor
+            - Humanoid bone detection (mixamo/Blender/UE naming) + bone mapping UI
+            - Interactive 3D viewer: rotate/zoom/pan, grid, lighting, backgrounds, fullscreen
+            - Standard actions (Stand/Walk/Run/Sit/Sleep/Talk) with honest missing-state handling
             - Real video export via on-device screen recording (MediaProjection)
 
-            **Install:** download `CharacterStudio3D-v1.0.0.apk` below, allow
+            **Install:** download `CharacterStudio3D-v1.2.0.apk` below, allow
             "install unknown apps" if prompted, and open it. Signed with a debug
             key — safe for testing/sideloading.
-          files: CharacterStudio3D-v1.0.0.apk
+          files: CharacterStudio3D-v1.2.0.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

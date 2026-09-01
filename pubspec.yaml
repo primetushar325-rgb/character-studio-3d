@@ -1,9 +1,11 @@
 name: character_studio_3d
 description: >-
-  Character Studio 3D — an offline 3D character animation and preview studio
-  for Android. Browse, import and animate GLB characters entirely on-device.
+  2D Character Studio — a professional offline 2D character rigging and
+  animation editor for Android. 16:9 landscape compositions, rigged 2D
+  characters, keyframe animation, backgrounds, layers and real frame-based
+  video/GIF/PNG export. 100% 2D — no 3D pipeline anywhere.
 publish_to: "none"
-version: 1.0.0+1
+version: 2.0.0+4
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -16,21 +18,22 @@ dependencies:
   # State management (single consistent solution across the app)
   provider: ^6.1.2
 
-  # Local persistence (favorites, recents, settings, metadata, projects)
+  # Local persistence (characters, variants, editor settings, recents)
   shared_preferences: ^2.3.2
 
-  # Filesystem access (character directory, thumbnails)
+  # Filesystem access (exports, PNG sequence, saved HTML characters)
   path_provider: ^2.1.4
   path: ^1.9.0
 
-  # Android system file picker (Storage Access Framework — no permissions needed)
+  # Android system file picker (character PNGs + background gallery images)
   file_picker: ^8.1.3
 
-  # Local 3D viewer host (renders the bundled model-viewer engine offline)
-  webview_flutter: ^4.10.0
-
-  # Share exported videos / characters (all local, via Android sharesheet)
+  # Share exported videos / GIFs / characters via the Android sharesheet
   share_plus: ^10.1.4
+
+  # Real offline video encoding (H.264 MP4) from rendered frames.
+  # min-gpl build: libx264 only, no network codecs.
+  ffmpeg_kit_flutter_new_min_gpl: ^2.6.2
 
   cupertino_icons: ^1.0.8
 
@@ -41,10 +44,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  assets:
-    # Bundled sample characters (add any new .glb here — the folder is scanned,
-    # no Dart code changes required).
-    - assets/characters/
-    # Offline 3D engine (model-viewer) + viewer bridge page
-    - assets/viewer/
