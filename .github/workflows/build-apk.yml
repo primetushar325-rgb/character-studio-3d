@@ -39,52 +39,61 @@ jobs:
         continue-on-error: true
         run: flutter analyze
 
+      - name: Run all tests
+        run: flutter test
+
       - name: Ensure gradlew is executable
         run: chmod +x android/gradlew
 
       - name: Build release APKs (arm64 + armeabi-v7a)
         run: |
           flutter build apk --release --target-platform android-arm64
-          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.0.0-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.4.0-arm64-v8a.apk
           flutter build apk --release --target-platform android-arm -PtargetAbi=armeabi-v7a
-          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.0.0-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.4.0-armeabi-v7a.apk
           ls -lh *.apk
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 2DCharacterStudio-apk-v2-0-0
-          path: 2DCharacterStudio-v2.0.0-*.apk
+          name: 2DCharacterStudio-apk-v2-4-0
+          path: 2DCharacterStudio-v2.4.0-*.apk
           retention-days: 90
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.0
-          name: Character Studio 3D v1.2.0
+          tag_name: v2.4.0
+          name: Character Studio 2D v2.4.0 — Scene Graph, Story Timeline, Audio
           body: |
-            **Character Studio 3D v1.2.0** — offline 2D + 3D character animation studio.
+            **Character Studio 2D v2.4.0** — offline 2D character animation studio with a real multi-object scene editor, story timeline and audio system.
 
-            🆕 v1.2.0 — 2D Cartoon Character System:
-            - 3 original rigged 2D characters: BD Farmer Male, Village Girl, School Teacher
-            - Universal humanoid_v1 rig (20 bones) — animation reuse across characters
-            - Stand / Walk / Run / Sit / Sleep / Talk with start & stop transitions
-            - Full face rig: blinking, eye look, 10 expressions, 16 mouth shapes
-            - Procedural talking (varied mouth timing + gestures) — lip-sync ready
-            - 10 hand gestures, 6 head movements, layered animation + state machine
-            - Character customization (colors/accessories) saved as variants
+            🆕 Phases 2–4:
 
-            - Character library: built-in + imported sections, search/sort, favorites, recently used
-            - GLB/GLTF import with staged pipeline, validation & skeleton/rig detection
-            - Animation alias detection with confidence scores + manual mapping editor
-            - Humanoid bone detection (mixamo/Blender/UE naming) + bone mapping UI
-            - Interactive 3D viewer: rotate/zoom/pan, grid, lighting, backgrounds, fullscreen
-            - Standard actions (Stand/Walk/Run/Sit/Sleep/Talk) with honest missing-state handling
-            - Real video export via on-device screen recording (MediaProjection)
+            **Phase 2 — Scene graph & multi-object editor**
+            - Real scene graph: characters, images, text and shapes as independent, movable/scalable/rotatable layers with z-order, hide and lock
+            - Multiple characters in one scene (each with its own animation state) — adding never replaces
+            - Gallery images imported as layers, copied into the project so they survive restarts
+            - Real text + shape objects rendered by the same pipeline as the export
+            - Layers panel, selection handles, canvas-relative coordinates
 
-            **Install:** download `CharacterStudio3D-v1.2.0.apk` below, allow
-            "install unknown apps" if prompted, and open it. Signed with a debug
-            key — safe for testing/sideloading.
-          files: CharacterStudio3D-v1.2.0.apk
+            **Phase 3 — Story timeline**
+            - 20s default scene duration (10/15/20/30/60s presets), one deterministic playback clock (0.25×–2×)
+            - Animation clips per character (walk 0–5s, wave 5–8s …) with move/trim/duplicate, loop, speed 0.25×–2× and walk→wave pose blending
+            - Object visibility ranges, transform keyframes (x/y/scale/rotation/opacity) with linear/easeIn/easeOut/easeInOut, AUTO KEY, keyframe editing
+            - Timeline zoom, snapping, playhead scrubbing, timeline undo/redo
+            - Preview and export use the exact same evaluator
+
+            **Phase 4 — Audio**
+            - Music / voice / SFX clips imported via the system picker and copied into the project
+            - Audio tracks on the same story timeline: move, non-destructive trim, volume 0–150%, mute, fade in/out, loop
+            - Multi-clip preview mixing driven by the scene clock — seeks stay perfectly in sync
+            - MP4 export now contains the mixed audio, rendered deterministically from the project (never a blind file attach)
+            - Missing audio files offer Locate / Remove and never crash
+
+            **Install:** download `2DCharacterStudio-v2.4.0-arm64-v8a.apk` (most devices) or `2DCharacterStudio-v2.4.0-armeabi-v7a.apk` (older 32-bit devices) below, allow "install unknown apps" if prompted, and open it. Signed with a debug key — safe for testing/sideloading.
+          files: |
+            2DCharacterStudio-v2.4.0-arm64-v8a.apk
+            2DCharacterStudio-v2.4.0-armeabi-v7a.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
