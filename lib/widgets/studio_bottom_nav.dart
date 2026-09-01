@@ -26,7 +26,7 @@ class StudioBottomNav extends StatelessWidget {
 
   static const List<StudioNavItem> items = [
     StudioNavItem(
-        icon: Icons.edit_outlined, activeIcon: Icons.edit_rounded, label: 'Editor'),
+        icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
     StudioNavItem(
         icon: Icons.accessibility_new_outlined,
         activeIcon: Icons.accessibility_new_rounded,

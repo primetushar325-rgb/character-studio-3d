@@ -1,10 +1,14 @@
-# 2D Character Studio — v2.0
+# 2D Story / Video Editor — v2.1 (Phase 1)
 
-**A 100% offline, professional 16:9 2D character rigging & animation editor.**
+**A 100% offline, mobile 2D story/video editor with rigged 2D characters.**
 No 3D. No network. No accounts. Everything runs on-device.
 
-> v2.0 is a full 3D→2D reversal: all GLB/GLTF/WebGL pipelines are gone. The app is now a
-> 2D skeletal animation studio with a real frame-rendered video export.
+> **Flow (Phase 1):** HOME → NEW PROJECT (16:9 / 9:16 / 1:1) → EDITOR → persistent project.
+> Projects autosave to `<appDocuments>/projects/<id>/project.json` and survive app close,
+> restart and process death.
+
+> v2.0 removed every 3D pipeline (GLB/GLTF/WebGL). Phase 1 (v2.1) adds the real project
+> foundation + Home screen on top of the existing 2D engine, renderer and export.
 
 ---
 

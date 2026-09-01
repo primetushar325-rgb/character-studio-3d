@@ -1,0 +1,304 @@
+import 'package:flutter/material.dart' show Color;
+
+import '../backgrounds/backgrounds.dart';
+import '../characters2d/engine/face_rig.dart' show Expr;
+import '../state/editor_provider.dart'
+    show CharacterTransform, EditorProvider;
+
+/// Canvas orientation presets (Phase 1 requirement: exactly three).
+class ProjectOrientation {
+  static const landscape16x9 = 'landscape16x9'; // 1920 × 1080
+  static const portrait9x16 = 'portrait9x16'; // 1080 × 1920
+  static const square1x1 = 'square1x1'; // 1080 × 1080
+
+  static const all = [landscape16x9, portrait9x16, square1x1];
+
+  static (int, int) canvasSize(String orientation) {
+    switch (orientation) {
+      case portrait9x16:
+        return (1080, 1920);
+      case square1x1:
+        return (1080, 1080);
+      case landscape16x9:
+      default:
+        return (1920, 1080);
+    }
+  }
+
+  static String label(String orientation) {
+    switch (orientation) {
+      case portrait9x16:
+        return 'Portrait 9:16';
+      case square1x1:
+        return 'Square 1:1';
+      case landscape16x9:
+      default:
+        return 'Landscape 16:9';
+    }
+  }
+
+  static double aspect(String orientation) {
+    final (w, h) = canvasSize(orientation);
+    return w / h;
+  }
+}
+
+/// A real, persistent project document. Phase 1 keeps the editor's current
+/// single-character composition as the "scene state"; `scene` and `timeline`
+/// are reserved placeholders for the Phase 2 SceneGraph and Phase 3
+/// StoryTimeline migrations (never read as required data yet).
+class ProjectDocument {
+  ProjectDocument({
+    required this.id,
+    required this.name,
+    required this.orientation,
+    required this.canvasWidth,
+    required this.canvasHeight,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    this.thumbnailPath,
+    this.background,
+    this.characterId,
+    this.characterTransform,
+    this.actionId,
+    this.expression,
+    this.talking,
+    this.directionLeft,
+    this.layers = const [],
+    this.effectsVignette = false,
+    this.foregroundHaze = false,
+    this.exportFps = 30,
+    this.exportQuality = 'High',
+    this.scene = const {},
+    this.timeline = const {},
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
+
+  final String id;
+  String name;
+  String orientation; // ProjectOrientation.*
+  int canvasWidth;
+  int canvasHeight;
+  DateTime createdAt;
+  DateTime updatedAt;
+  String? thumbnailPath; // relative to the project folder
+
+  // ---- Phase-1 scene state (the editor's current composition) -----------
+  Map<String, dynamic>? background; // serialized BgConfig (null = default)
+  String? characterId; // null = empty project (no forced placeholder)
+  Map<String, dynamic>? characterTransform;
+  String? actionId; // e.g. 'walk'
+  String? expression; // Expr name, e.g. 'happy'
+  bool? talking;
+  bool? directionLeft;
+  List<Map<String, dynamic>> layers; // visibility / lock per layer id
+  bool effectsVignette;
+  bool foregroundHaze;
+
+  // ---- Export settings ----------------------------------------------------
+  int exportFps;
+  String exportQuality;
+
+  // ---- Phase 2/3 migration placeholders (kept stable in JSON) ------------
+  Map<String, dynamic> scene;
+  Map<String, dynamic> timeline;
+
+  /// Absolute path of the thumbnail inside [projectDir], if generated.
+  FileLike? thumbnailOf(String projectDirPath) => null; // ignored helper
+
+  Map<String, dynamic> toJson() => {
+        'format': 1,
+        'id': id,
+        'name': name,
+        'orientation': orientation,
+        'canvas': {'width': canvasWidth, 'height': canvasHeight},
+        'createdAt': createdAt.millisecondsSinceEpoch,
+        'updatedAt': updatedAt.millisecondsSinceEpoch,
+        'thumbnailPath': thumbnailPath,
+        'background': background,
+        'characterId': characterId,
+        'characterTransform': characterTransform,
+        'actionId': actionId,
+        'expression': expression,
+        'talking': talking,
+        'directionLeft': directionLeft,
+        'layers': layers,
+        'effectsVignette': effectsVignette,
+        'foregroundHaze': foregroundHaze,
+        'export': {'fps': exportFps, 'quality': exportQuality},
+        'scene': scene,
+        'timeline': timeline,
+      };
+
+  static ProjectDocument fromJson(Map<String, dynamic> json) {
+    final canvas = (json['canvas'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final export = (json['export'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final (w, h) = ProjectOrientation.canvasSize(
+        (json['orientation'] as String?) ?? ProjectOrientation.landscape16x9);
+    return ProjectDocument(
+      id: json['id'] as String,
+      name: (json['name'] as String?) ?? 'Untitled',
+      orientation: (json['orientation'] as String?) ?? ProjectOrientation.landscape16x9,
+      canvasWidth: (canvas['width'] as num?)?.toInt() ?? w,
+      canvasHeight: (canvas['height'] as num?)?.toInt() ?? h,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+          (json['createdAt'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(
+          (json['updatedAt'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch),
+      thumbnailPath: json['thumbnailPath'] as String?,
+      background: (json['background'] as Map?)?.cast<String, dynamic>(),
+      characterId: json['characterId'] as String?,
+      characterTransform: (json['characterTransform'] as Map?)?.cast<String, dynamic>(),
+      actionId: json['actionId'] as String?,
+      expression: json['expression'] as String?,
+      talking: json['talking'] as bool?,
+      directionLeft: json['directionLeft'] as bool?,
+      layers: [
+        for (final l in (json['layers'] as List? ?? []))
+          if (l is Map) l.cast<String, dynamic>(),
+      ],
+      effectsVignette: json['effectsVignette'] as bool? ?? false,
+      foregroundHaze: json['foregroundHaze'] as bool? ?? false,
+      exportFps: (export['fps'] as num?)?.toInt() ?? 30,
+      exportQuality: (export['quality'] as String?) ?? 'High',
+      scene: (json['scene'] as Map?)?.cast<String, dynamic>() ?? const {},
+      timeline: (json['timeline'] as Map?)?.cast<String, dynamic>() ?? const {},
+    );
+  }
+
+}
+
+/// BgConfig ⇄ JSON (kept here so backgrounds.dart stays untouched).
+Map<String, dynamic> bgConfigToJson(BgConfig bg) => {
+      'kind': bg.kind.name,
+      'builtinId': bg.builtinId,
+      'color1': bg.color1.value,
+      'color2': bg.color2.value,
+      'gradientAngle': bg.gradientAngle,
+      'imagePath': bg.imagePath,
+      'fit': bg.fit.name,
+      'offsetX': bg.offsetX,
+      'offsetY': bg.offsetY,
+      'scale': bg.scale,
+      'brightness': bg.brightness,
+      'contrast': bg.contrast,
+      'blur': bg.blur,
+      'opacity': bg.opacity,
+    };
+
+BgConfig bgConfigFromJson(Map<String, dynamic>? j) {
+  if (j == null) return BgConfig();
+  return BgConfig(
+    kind: BgKind.values.byName(j['kind'] as String? ?? 'builtin'),
+    builtinId: j['builtinId'] as String? ?? 'studio_dark',
+    color1: Color((j['color1'] as num?)?.toInt() ?? 0xFF101828),
+    color2: Color((j['color2'] as num?)?.toInt() ?? 0xFF2A1E5C),
+    gradientAngle: (j['gradientAngle'] as num?)?.toDouble() ?? 135,
+    imagePath: j['imagePath'] as String?,
+    fit: BgFit.values.byName(j['fit'] as String? ?? 'cover'),
+    offsetX: (j['offsetX'] as num?)?.toDouble() ?? 0,
+    offsetY: (j['offsetY'] as num?)?.toDouble() ?? 0,
+    scale: (j['scale'] as num?)?.toDouble() ?? 1,
+    brightness: (j['brightness'] as num?)?.toDouble() ?? 0,
+    contrast: (j['contrast'] as num?)?.toDouble() ?? 0,
+    blur: (j['blur'] as num?)?.toDouble() ?? 0,
+    opacity: (j['opacity'] as num?)?.toDouble() ?? 1,
+  );
+}
+
+Map<String, dynamic> characterTransformToJson(CharacterTransform t) => {
+      'x': t.x,
+      'y': t.y,
+      'scale': t.scale,
+      'rotation': t.rotation,
+      'flipH': t.flipH,
+      'flipV': t.flipV,
+      'opacity': t.opacity,
+    };
+
+void characterTransformFromJson(Map<String, dynamic>? j, CharacterTransform t) {
+  if (j == null) return;
+  t.x = (j['x'] as num?)?.toDouble() ?? t.x;
+  t.y = (j['y'] as num?)?.toDouble() ?? t.y;
+  t.scale = (j['scale'] as num?)?.toDouble() ?? t.scale;
+  t.rotation = (j['rotation'] as num?)?.toDouble() ?? t.rotation;
+  t.flipH = j['flipH'] as bool? ?? t.flipH;
+  t.flipV = j['flipV'] as bool? ?? t.flipV;
+  t.opacity = (j['opacity'] as num?)?.toDouble() ?? t.opacity;
+}
+
+// ---- EditorProvider ⇄ ProjectDocument sync helpers -------------------------
+
+/// Writes the editor's live state INTO the document (mutates + timestamps).
+void captureEditorIntoProject(EditorProvider ed, ProjectDocument doc) {
+  doc
+    ..name = ed.projectName
+    ..canvasWidth = ed.canvasWidth
+    ..canvasHeight = ed.canvasHeight
+    ..background = bgConfigToJson(ed.background)
+    ..characterId = ed.character?.id
+    ..characterTransform = characterTransformToJson(ed.transform)
+    ..actionId = ed.controller?.actionId
+    ..expression = ed.controller?.animator.expression.name
+    ..talking = ed.controller?.talkOverlay
+    ..directionLeft = ed.controller?.directionLeft
+    ..layers = [
+      for (final l in ed.layers)
+        {'id': l.id, 'visible': l.visible, 'locked': l.locked},
+    ]
+    ..effectsVignette = ed.effectsVignette
+    ..foregroundHaze = ed.foregroundHaze
+    ..updatedAt = DateTime.now();
+}
+
+/// Applies the document state ONTO the editor (loading a project).
+void applyProjectToEditor(EditorProvider ed, ProjectDocument doc) {
+  ed.projectName = doc.name;
+  ed.canvasWidth = doc.canvasWidth;
+  ed.canvasHeight = doc.canvasHeight;
+  ed.background = bgConfigFromJson(doc.background);
+  ed.effectsVignette = doc.effectsVignette;
+  ed.foregroundHaze = doc.foregroundHaze;
+  characterTransformFromJson(doc.characterTransform, ed.transform);
+  for (final l in ed.layers) {
+    final saved = doc.layers.where((m) => m['id'] == l.id).firstOrNull;
+    if (saved != null) {
+      l.visible = saved['visible'] as bool? ?? true;
+      l.locked = saved['locked'] as bool? ?? false;
+    }
+  }
+  // Character + playback are applied separately (async spec/art loads).
+}
+
+/// The deferred part of [applyProjectToEditor]: character, background image,
+/// playback state. Safe to call after the library is loaded.
+Future<void> applyProjectRuntimeToEditor(EditorProvider ed, ProjectDocument doc) async {
+  if (doc.characterId != null && ed.character?.id != doc.characterId) {
+    ed.loadCharacter(doc.characterId!);
+  }
+  final ctl = ed.controller;
+  if (ctl != null) {
+    Expr? expr;
+    for (final e in Expr.values) {
+      if (e.name == doc.expression) expr = e;
+    }
+    ctl.setExpression(expr ?? Expr.neutral);
+    if (doc.actionId != null) ctl.setAction(doc.actionId!);
+    if (doc.talking != null) ctl.setTalking(doc.talking!);
+    ctl.setDirection((doc.directionLeft ?? false) ? -1 : 1);
+  }
+  if (ed.background.kind == BgKind.image && ed.background.imagePath != null) {
+    try {
+      await ed.loadBgImage(ed.background.imagePath!);
+    } catch (_) {
+      // Missing/unreadable image → keep default background (friendly error).
+    }
+  }
+}
+
+/// Tiny typedef placeholder used by [ProjectDocument.thumbnailOf] so the
+/// project model stays free of dart:io imports (testable in pure VM tests).
+class FileLike {
+  const FileLike(this.path);
+  final String path;
+}

@@ -6,7 +6,9 @@ import '../../characters2d/widgets2d/puppet_stage.dart';
 import '../../core/theme/app_colors.dart';
 import '../../state/editor_provider.dart';
 import '../../state/library2d_provider.dart';
-import '../../state/shell_provider.dart';
+import '../../state/projects_provider.dart';
+import '../project/editor_launcher.dart';
+import '../project/project_setup_screen.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/premium_button.dart';
 import '../../widgets/section_header.dart';
@@ -124,10 +126,16 @@ class _RecentChip extends StatelessWidget {
     );
   }
 
-  void _use(BuildContext context, Library2DProvider lib) {
-    final ed = context.read<EditorProvider>();
-    ed.loadCharacter(character.id);
-    context.read<ShellProvider>().go(0);
+  Future<void> _use(BuildContext context, Library2DProvider lib) async {
+    // Characters are used inside a project — open the newest project or the
+    // setup screen if none exists yet.
+    final projects = context.read<ProjectsProvider>();
+    if (projects.projects.isEmpty) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProjectSetupScreen()));
+      return;
+    }
+    await openProjectEditor(context, projects.projects.first.id);
+    if (context.mounted) context.read<EditorProvider>().loadCharacter(character.id);
   }
 }
 
@@ -139,6 +147,7 @@ class _CharacterCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final lib = context.read<Library2DProvider>();
     final ed = context.read<EditorProvider>();
+    final projects = context.read<ProjectsProvider>();
     final fav = lib.isFavorite(character.id);
 
     return GlassCard(
@@ -191,9 +200,9 @@ class _CharacterCard extends StatelessWidget {
                         label: 'Use',
                         small: true,
                         style: PremiumButtonStyle.primary,
-                        onPressed: () {
-                          ed.loadCharacter(character.id);
-                          context.read<ShellProvider>().go(0);
+                        onPressed: () async {
+                          await openProjectEditor(context, projects.projects.first.id);
+                          if (context.mounted) ed.loadCharacter(character.id);
                         },
                       ),
                     ),
@@ -216,8 +225,12 @@ class _CharacterCard extends StatelessWidget {
   }
 
   Future<void> _exportHtml(BuildContext context, EditorProvider ed) async {
-    ed.loadCharacter(character.id);
-    await Future.delayed(const Duration(milliseconds: 50));
+    final projects = context.read<ProjectsProvider>();
+    if (projects.projects.isEmpty) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProjectSetupScreen()));
+      return;
+    }
+    await openProjectEditor(context, projects.projects.first.id);
     if (context.mounted) await exportCharacterHtml(context, ed);
   }
 }

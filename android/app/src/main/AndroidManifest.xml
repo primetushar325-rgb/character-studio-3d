@@ -3,7 +3,6 @@
     <!-- 100% offline 2D editor. INTERNET is only required because the
          ffmpeg-kit bundler references it; the app itself never contacts
          any remote host and works fully in airplane mode. -->
-    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name="${applicationName}"

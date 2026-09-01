@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' show Color;
 import '../characters2d/art/character_catalog.dart';
 import '../characters2d/character2d_model.dart';
 import '../characters2d/character2d_repository.dart';
+import '../characters2d/png_character.dart';
 
 /// App-wide 2D character library state: the three built-in characters plus
 /// saved customization variants, favorites and recently-used tracking.
@@ -25,6 +26,7 @@ class Library2DProvider extends ChangeNotifier {
     _variants = await repo.loadVariants();
     _favorites = await repo.loadFavorites();
     _recents = await repo.loadRecents();
+    await rehydratePngCharacters();
     // Apply persisted usage info to built-ins (variants carry their own).
     for (final r in _recents) {
       for (final c in _builtIns) {
@@ -94,10 +96,26 @@ class Library2DProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Re-registers PNG character specs after restart (artwork reloaded).
+  /// Re-registers imported PNG character specs after restart so saved
+  /// variants resolve to their real artwork + rig (not the fallback farmer).
   Future<void> rehydratePngCharacters() async {
-    // Spec registry is refreshed by the import flow; PNG specs re-register
-    // lazily when their artwork is next needed.
+    for (final v in _variants) {
+      final path = v.imagePath;
+      if (path == null) continue;
+      if (CharacterCatalog.byId(v.specId) != null) continue; // already live
+      try {
+        final art = await loadPngArt(path);
+        if (art == null) continue; // artwork file missing → skip safely
+        CharacterCatalog.register(pngSpecFromArt(
+          id: v.specId,
+          name: v.name,
+          art: art,
+          rigKind: v.rigKind ?? 'humanoid_v1',
+        ));
+      } catch (_) {
+        // One bad import never blocks the library from loading.
+      }
+    }
   }
 
   /// Updates an existing variant in place (customization edits).

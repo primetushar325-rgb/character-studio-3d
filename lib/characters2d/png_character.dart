@@ -81,6 +81,28 @@ List<Part2D> buildPngParts(ui.Image image, String rigKind) {
   ];
 }
 
+/// Builds the live spec from LOADED artwork. Used by both the import flow
+/// and the post-restart rehydration so both produce identical characters.
+Character2DSpec pngSpecFromArt({
+  required String id,
+  required String name,
+  required PngCharacterArt art,
+  String rigKind = 'humanoid_v1',
+}) {
+  return Character2DSpec(
+    id: id,
+    name: name,
+    category: 'Imported PNG',
+    description: 'Imported artwork on a $rigKind cutout rig (original design preserved).',
+    defaultPalette: Palettes.farmerDefault,
+    slots: const [],
+    faceStyle: null,
+    scale: 1,
+    rigKind: rigKind,
+    build: (accessories) => buildPngParts(art.image, rigKind),
+  );
+}
+
 /// A PNG character spec: rig kind selectable (humanoid silhouette by
 /// default), image resolved lazily from [imagePath].
 Character2DSpec pngCharacterSpec({

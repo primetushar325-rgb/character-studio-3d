@@ -7,8 +7,9 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../export2d/export_service2d.dart';
 import '../../scene/scene_renderer.dart';
+import '../../project/project_document.dart';
 import '../../state/editor_provider.dart';
-import '../../state/library2d_provider.dart';
+import '../../state/projects_provider.dart';
 import '../../widgets/premium_button.dart';
 import '../characters/character_picker_sheet.dart';
 import 'export_share_bridge.dart';
@@ -23,31 +24,62 @@ class EditorScreen extends StatefulWidget {
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
-class _EditorScreenState extends State<EditorScreen> {
+class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver {
   final _transformationController = TransformationController();
   bool _fullscreen = false;
+  bool _closed = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ed = context.read<EditorProvider>();
-      final lib = context.read<Library2DProvider>();
-      if (ed.controller == null && lib.all.isNotEmpty) {
-        ed.loadCharacter(lib.all.first.id);
-      }
-    });
+    WidgetsBinding.instance.addObserver(this);
+    // Phase 1: NO character is auto-loaded — a new project starts empty and
+    // the user adds background/character from the tools. Existing projects
+    // restore their saved character via ProjectsProvider.openProject.
+    final ed = context.read<EditorProvider>();
+    _applyOrientationLock(ed);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Lifecycle pause → flush the debounced save immediately.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      context.read<ProjectsProvider>().onAppPaused();
+    }
+  }
+
+  /// The editor canvas ratio is fixed by the project; landscape projects get
+  /// a true horizontal workspace, portrait locks portrait, square is free.
+  void _applyOrientationLock(EditorProvider ed) {
+    final o = ed.project?.orientation ?? ProjectOrientation.landscape16x9;
+    final landscape = [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight];
+    final portrait = [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown];
+    final any = [...portrait, ...landscape];
+    SystemChrome.setPreferredOrientations(
+        o == ProjectOrientation.landscape16x9 ? landscape : (o == ProjectOrientation.portrait9x16 ? portrait : any));
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  Future<void> _leaveEditor() async {
+    if (_closed) return;
+    _closed = true;
+    await context.read<ProjectsProvider>().closeCurrent();
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _transformationController.dispose();
+    // Restore free orientation for the shell screens.
+    SystemChrome.setPreferredOrientations(
+        [DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
   void _toggleFullscreen() {
     setState(() => _fullscreen = !_fullscreen);
-    SystemChrome.setPreferredOrientations(_fullscreen ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : [DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     SystemChrome.setEnabledSystemUIMode(_fullscreen ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
   }
 
@@ -56,25 +88,34 @@ class _EditorScreenState extends State<EditorScreen> {
     final ed = context.watch<EditorProvider>();
     final isWide = MediaQuery.of(context).size.width > 720;
 
+    final aspect = ed.canvasWidth / ed.canvasHeight;
+
     if (_fullscreen) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: GestureDetector(
-          onDoubleTap: _toggleFullscreen,
-          child: InteractiveViewer(
-            transformationController: _transformationController,
-            minScale: 0.5,
-            maxScale: 5,
-            child: Center(child: AspectRatio(aspectRatio: 16 / 9, child: _canvas(ed))),
+      return PopScope(
+        canPop: false,
+        onPopInvoked: (didPop) => _leaveEditor(),
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: GestureDetector(
+            onDoubleTap: _toggleFullscreen,
+            child: InteractiveViewer(
+              transformationController: _transformationController,
+              minScale: 0.5,
+              maxScale: 5,
+              child: Center(child: AspectRatio(aspectRatio: aspect, child: _canvas(ed))),
+            ),
           ),
         ),
       );
     }
 
-    final canvas = AspectRatio(aspectRatio: 16 / 9, child: _canvas(ed));
+    final canvas = AspectRatio(aspectRatio: aspect, child: _canvas(ed));
     final panels = const EditorPanels();
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) => _leaveEditor(),
+      child: Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
         bottom: false,
@@ -105,6 +146,7 @@ class _EditorScreenState extends State<EditorScreen> {
         backgroundColor: AppColors.surfaceAlt,
         onPressed: _toggleFullscreen,
         child: const Icon(Icons.fullscreen_rounded, color: AppColors.textSecondary),
+      ),
       ),
     );
   }
@@ -147,9 +189,14 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _toolbar(EditorProvider ed) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.fromLTRB(4, 8, 12, 4),
       child: Row(
         children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textSecondary, size: 22),
+            onPressed: _leaveEditor,
+            tooltip: 'Save & close project',
+          ),
           Expanded(
             child: Text(
               '${ed.projectName}  ·  ${ed.canvasWidth}×${ed.canvasHeight}',
@@ -178,7 +225,8 @@ class _EditorScreenState extends State<EditorScreen> {
 }
 
 Future<void> _openExport(BuildContext context, EditorProvider ed) async {
-  if (ed.controller == null) return;
+  // Exports the real composition — a background-only project (no character
+  // yet) still exports exactly what the canvas shows.
   showDialog<void>(context: context, builder: (_) => const ExportDialog());
 }
 
@@ -205,6 +253,14 @@ class _ExportDialogState extends State<ExportDialog> {
   ExportType _type = ExportType.video;
   int _w = 1920;
   int _h = 1080;
+
+  @override
+  void initState() {
+    super.initState();
+    final ed = context.read<EditorProvider>();
+    _w = ed.canvasWidth;
+    _h = ed.canvasHeight;
+  }
   int _fps = 30;
   int _quality = 2;
   int _loops = 2;
@@ -218,6 +274,12 @@ class _ExportDialogState extends State<ExportDialog> {
     final clipDur = ed.controller?.animator.clipDuration ?? 2;
     final duration = clipDur * _loops;
     final estimate = _estimate(duration);
+    // Presets follow the project orientation (16:9 / 9:16 / 1:1); smaller
+    // presets stay available exactly as before for landscape.
+    final portrait = ed.canvasHeight > ed.canvasWidth;
+    final square = ed.canvasWidth == ed.canvasHeight;
+    final presets = portrait || square ? const [1080, 720, 480] : const [1920, 1280, 854];
+    final presetLabels = const ['1080p', '720p', '480p'];
 
     return AlertDialog(
       backgroundColor: AppColors.surface,
@@ -241,7 +303,15 @@ class _ExportDialogState extends State<ExportDialog> {
                         ),
                         const SizedBox(height: 12),
                         if (_type != ExportType.png) ...[
-                          _seg<int>(values: const [1920, 1280, 854], labels: const ['1080p', '720p', '480p'], value: _w, onChanged: (v) => setState(() { _w = v; _h = (v * 9 / 16).round(); })),
+                          _seg<int>(
+                            values: presets,
+                            labels: presetLabels,
+                            value: _w,
+                            onChanged: (v) => setState(() {
+                              _w = v;
+                              _h = square ? v : portrait ? (v * 16 / 9).round() : (v * 9 / 16).round();
+                            }),
+                          ),
                           const SizedBox(height: 12),
                           _seg<int>(values: const [24, 30, 60], labels: const ['24 FPS', '30 FPS', '60 FPS'], value: _fps, onChanged: (v) => setState(() => _fps = v)),
                           const SizedBox(height: 12),

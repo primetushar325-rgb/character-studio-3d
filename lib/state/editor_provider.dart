@@ -8,6 +8,7 @@ import '../backgrounds/backgrounds.dart';
 import '../characters2d/character2d_model.dart';
 import '../characters2d/engine/face_rig.dart';
 import '../characters2d/puppet_controller.dart';
+import '../project/project_document.dart';
 import '../state/library2d_provider.dart';
 
 /// Canvas presets (always true 16:9).
@@ -51,6 +52,14 @@ class EditorProvider extends ChangeNotifier {
   final Library2DProvider _library;
   PuppetController? controller;
   Character2D? character;
+
+  /// The persistent project this composition belongs to (null = no project
+  /// open; the home screen always opens the editor through a project).
+  ProjectDocument? project;
+  bool get hasProject => project != null;
+
+  /// Public repaint trigger for external state owners (ProjectsProvider).
+  void refresh() => notifyListeners();
 
   final CharacterTransform transform = CharacterTransform();
   BgConfig background = BgConfig();

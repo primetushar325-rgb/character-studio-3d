@@ -5,6 +5,7 @@ import 'app.dart';
 import 'characters2d/character2d_repository.dart';
 import 'state/editor_provider.dart';
 import 'state/library2d_provider.dart';
+import 'state/projects_provider.dart';
 import 'state/shell_provider.dart';
 
 void main() {
@@ -25,6 +26,7 @@ class CharacterStudioRoot extends StatelessWidget {
         ChangeNotifierProvider.value(value: library2d),
         ChangeNotifierProvider(create: (_) => ShellProvider()),
         ChangeNotifierProvider(create: (_) => EditorProvider(library2d)),
+        ChangeNotifierProvider(create: (_) => ProjectsProvider()),
       ],
       child: const CharacterStudioApp(),
     );

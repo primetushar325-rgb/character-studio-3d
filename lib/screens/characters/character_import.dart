@@ -46,20 +46,8 @@ Future<void> importPngCharacter(BuildContext context) async {
 
     final art = await loadPngArt(dest);
     if (art == null) throw 'artwork could not be decoded';
-    final spec = Character2DSpec(
-      id: id,
-      name: name,
-      category: 'Imported PNG',
-      description: 'Imported artwork on a $rigKind cutout rig (original design preserved).',
-      defaultPalette: art.resolver.slots.isNotEmpty ? CharacterCatalog.farmer.defaultPalette : CharacterCatalog.farmer.defaultPalette,
-      slots: const [],
-      faceStyle: null,
-      scale: 1,
-      rigKind: rigKind,
-      build: (accessories) => buildPngParts(art.image, rigKind),
-    );
-    CharacterCatalog.register(spec);
-    final character = Character2D(id: id, specId: id, name: name, isVariant: true, imagePath: dest, createdAt: DateTime.now());
+    CharacterCatalog.register(pngSpecFromArt(id: id, name: name, art: art, rigKind: rigKind));
+    final character = Character2D(id: id, specId: id, name: name, isVariant: true, imagePath: dest, rigKind: rigKind, createdAt: DateTime.now());
     await lib.saveVariantFull(character);
     ed.loadCharacter(id);
     if (context.mounted) {

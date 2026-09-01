@@ -15,6 +15,7 @@ class Character2D {
     Set<String>? accessories,
     this.isVariant = false,
     this.imagePath,
+    this.rigKind,
     this.createdAt,
     this.updatedAt,
     this.lastUsedAt,
@@ -38,6 +39,10 @@ class Character2D {
 
   /// For imported PNG cutout characters: the copied artwork path.
   final String? imagePath;
+
+  /// Rig kind for imported PNG cutout characters (persisted so the spec can
+  /// be re-registered after an app restart).
+  final String? rigKind;
   final DateTime? createdAt;
   DateTime? updatedAt;
   DateTime? lastUsedAt;
@@ -94,6 +99,7 @@ class Character2D {
         accessories: {...?((json['accessories'] as List?)?.cast<String>())},
         isVariant: true,
         imagePath: json['imagePath'] as String?,
+        rigKind: json['rigKind'] as String?,
         createdAt: DateTime.fromMillisecondsSinceEpoch((json['createdAt'] as num?)?.toInt() ?? 0),
         updatedAt: DateTime.fromMillisecondsSinceEpoch((json['updatedAt'] as num?)?.toInt() ?? 0),
         lastUsedAt: json['lastUsedAt'] == null
