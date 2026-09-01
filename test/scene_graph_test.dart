@@ -216,7 +216,7 @@ void main() {
       ed.updateObject(txt.id, (o) => o.text = 'HELLO');
       final shp = ed.addShape('circle');
       ed.updateObject(shp.id, (o) => o.fillColor = 0xFF123456);
-      final img = await ed.addImage('/nonexistent.png', 'assets/images/x.png');
+      await ed.addImage('/nonexistent.png', 'assets/images/x.png');
 
       captureEditorIntoProject(ed, doc);
       await repo.save(doc);

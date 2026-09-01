@@ -586,13 +586,6 @@ class EditorProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Prunes tracks for deleted objects (kept unless empty).
-  void _pruneTimeline() {
-    timeline
-        .pruneTo(objects.map((o) => o.id).toSet());
-    _runtimeTransforms.removeWhere((k, _) => !timeline.tracks.containsKey(k));
-    refreshRuntime();
-  }
 
 
   PuppetController? controllerFor(SceneObject obj) {
@@ -675,7 +668,7 @@ class EditorProvider extends ChangeNotifier {
     );
     objects.add(obj);
     selectedId = obj.id;
-    await imageFor(obj);
+    imageFor(obj);
     notifyListeners();
     return obj;
   }

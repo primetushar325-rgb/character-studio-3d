@@ -24,9 +24,8 @@ class PuppetPainter extends CustomPainter {
     this.showGroundShadow = true,
     this.designSpace = const Size(360, 340),
     this.fit = BoxFit.contain,
-    Listenable? repaint,
-  })  : parts = orderParts(spec.build(accessories)),
-        super(repaint: repaint);
+    super.repaint,
+  }) : parts = orderParts(spec.build(accessories));
 
   final Character2DSpec spec;
   final PaletteResolver resolver;

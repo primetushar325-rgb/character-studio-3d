@@ -47,12 +47,12 @@ abstract class FillSlot {
 }
 
 class SolidFillSlot extends FillSlot {
-  const SolidFillSlot(String slot) : super(slot);
+  const SolidFillSlot(super.slot);
 }
 
 /// Fixed color fill (used for generic details like eye whites).
 class ConstFill extends FillSlot {
-  const ConstFill(String slot, this.value) : super(slot);
+  const ConstFill(super.slot, this.value);
   final Color value;
 }
 

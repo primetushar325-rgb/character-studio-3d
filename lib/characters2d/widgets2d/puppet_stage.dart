@@ -88,7 +88,7 @@ class PuppetThumbnail extends StatelessWidget {
         spec: spec,
         resolver: resolver as dynamic,
         accessories: accessories,
-        frameGetter: source,
+        frameGetter: source.call,
         directionLeft: false,
         background: background,
         showGroundShadow: false,

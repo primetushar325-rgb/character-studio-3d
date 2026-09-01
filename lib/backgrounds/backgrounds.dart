@@ -264,14 +264,14 @@ class Backgrounds {
     BgSpec('studio_dark', 'Studio Dark', 'Studio', (c, s) {
       final rect = Rect.fromLTWH(0, 0, s.width, s.height);
       c.drawRect(rect, Paint()..shader = const LinearGradient(colors: [Color(0xFF171B26), Color(0xFF232A3D)]).createShader(rect));
-      final glow = Paint()..shader = RadialGradient(colors: [const Color(0x337B9BFF), Colors.transparent]).createShader(rect);
+      final glow = Paint()..shader = const RadialGradient(colors: [Color(0x337B9BFF), Colors.transparent]).createShader(rect);
       c.drawRect(rect, glow);
     }),
     BgSpec('stage_lights', 'Stage', 'Studio', (c, s) {
       final rect = Rect.fromLTWH(0, 0, s.width, s.height);
       c.drawRect(rect, Paint()..shader = const LinearGradient(colors: [Color(0xFF2A1E5C), Color(0xFF101828)]).createShader(rect));
       for (final x in [0.25, 0.5, 0.75]) {
-        final beam = Paint()..shader = LinearGradient(colors: [const Color(0x66FFD98A), Colors.transparent]).createShader(Rect.fromLTWH(s.width * x - s.width * 0.06, 0, s.width * 0.12, s.height * 0.7));
+        final beam = Paint()..shader = const LinearGradient(colors: [Color(0x66FFD98A), Colors.transparent]).createShader(Rect.fromLTWH(s.width * x - s.width * 0.06, 0, s.width * 0.12, s.height * 0.7));
         c.drawRect(Rect.fromLTWH(s.width * x - s.width * 0.06, 0, s.width * 0.12, s.height * 0.7), beam);
       }
       _ground(c, s, const Color(0xFF1D2236), 0.16);
@@ -305,7 +305,7 @@ class Backgrounds {
         ..lineTo(s.width, s.height * 0.85)
         ..close();
       c.drawPath(path, _p(const Color(0xFF5E4A8F)));
-      final glow = Paint()..shader = RadialGradient(colors: [const Color(0x55FFD98A), Colors.transparent]).createShader(Rect.fromCircle(center: Offset(s.width * 0.22, s.height * 0.3), radius: s.height * 0.18));
+      final glow = Paint()..shader = const RadialGradient(colors: [Color(0x55FFD98A), Colors.transparent]).createShader(Rect.fromCircle(center: Offset(s.width * 0.22, s.height * 0.3), radius: s.height * 0.18));
       c.drawRect(Rect.fromCircle(center: Offset(s.width * 0.22, s.height * 0.3), radius: s.height * 0.18), glow);
       _ground(c, s, const Color(0xFF3E3466), 0.18);
     }),
