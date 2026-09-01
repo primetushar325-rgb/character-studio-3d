@@ -16,8 +16,8 @@ void main() {
     final json = characterJsonString(tiger, tiger.defaultPalette);
     // Writable everywhere (CI runners have no /home/user).
     final dir = await Directory.systemTemp.createTemp('cs_sample_exports');
-    await File('\${dir.path}/tiger_character.html').writeAsString(html);
-    await File('\${dir.path}/character.json').writeAsString(json);
-    expect(await File('\${dir.path}/tiger_character.html').length(), greaterThan(5000));
+    await File('${dir.path}/tiger_character.html').writeAsString(html);
+    await File('${dir.path}/character.json').writeAsString(json);
+    expect(await File('${dir.path}/tiger_character.html').length(), greaterThan(5000));
   });
 }
