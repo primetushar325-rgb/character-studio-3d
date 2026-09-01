@@ -3,6 +3,7 @@ import 'package:flutter/material.dart' show Color;
 
 import '../backgrounds/backgrounds.dart';
 import '../scene/scene_object.dart';
+import '../audio/audio_clip.dart';
 import '../timeline/story_timeline.dart';
 import '../state/editor_provider.dart'
     show CharacterTransform, EditorProvider;
@@ -74,7 +75,9 @@ class ProjectDocument {
     this.exportQuality = 'High',
     this.scene = const {},
     this.timeline = const {},
-  })  : createdAt = createdAt ?? DateTime.now(),
+    List<Map<String, dynamic>>? audioClips,
+  })  : audioClips = audioClips ?? [],
+        createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
   final String id;
@@ -107,6 +110,9 @@ class ProjectDocument {
   Map<String, dynamic> scene;
   Map<String, dynamic> timeline;
 
+  // ---- Phase 4: audio clips (missing on old projects → empty list) --------
+  List<Map<String, dynamic>> audioClips;
+
   /// Absolute path of the thumbnail inside [projectDir], if generated.
   FileLike? thumbnailOf(String projectDirPath) => null; // ignored helper
 
@@ -133,6 +139,7 @@ class ProjectDocument {
         'export': {'fps': exportFps, 'quality': exportQuality},
         'scene': scene,
         'timeline': timeline,
+        'audioClips': audioClips,
       };
 
   static ProjectDocument fromJson(Map<String, dynamic> json) {
@@ -169,6 +176,10 @@ class ProjectDocument {
       exportQuality: (export['quality'] as String?) ?? 'High',
       scene: (json['scene'] as Map?)?.cast<String, dynamic>() ?? const {},
       timeline: (json['timeline'] as Map?)?.cast<String, dynamic>() ?? const {},
+      audioClips: (json['audioClips'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          [],
     );
   }
 
@@ -250,6 +261,9 @@ void captureEditorIntoProject(EditorProvider ed, ProjectDocument doc) {
       }
     // Story timeline (Phase 3): duration, tracks, clips, keyframes.
     ..timeline = ed.timeline.toJson()
+    // Audio clips (Phase 4): id/name/path/type/start/duration/sourceStart/
+    // volume/mute/fades/loop — everything needed to replay identically.
+    ..audioClips = [for (final c in ed.audioClips) c.toJson()]
     // Legacy single-character summary kept so Phase-1 builds still open the
     // project with at least the first character.
     ..characterId = firstChar?.characterId
@@ -367,6 +381,13 @@ Future<void> applyProjectRuntimeToEditor(EditorProvider ed, ProjectDocument doc)
   ed.clock
     ..durationMs = ed.timeline.durationMs
     ..seek(0);
+
+  // Audio (Phase 4): restore every clip; files that vanished are marked
+  // missing and surface as Locate/Remove in the timeline (never a crash).
+  ed.audio.clips
+    ..clear()
+    ..addAll(doc.audioClips.map(AudioClip.fromJson));
+  ed.audio.refreshMissing();
   ed.applySceneTime(0);
   ed.refresh();
 }

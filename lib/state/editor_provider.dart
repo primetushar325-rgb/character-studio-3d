@@ -16,6 +16,8 @@ import '../characters2d/engine/rig2d.dart' show solveSkeleton;
 import '../characters2d/puppet_controller.dart';
 import '../project/project_document.dart';
 import '../scene/scene_object.dart';
+import '../audio/audio_clip.dart';
+import '../audio/audio_timeline.dart';
 import '../state/library2d_provider.dart';
 import '../timeline/playback_clock.dart';
 import '../timeline/story_timeline.dart';
@@ -111,6 +113,16 @@ class EditorProvider extends ChangeNotifier {
   StoryTimeline timeline = StoryTimeline.empty();
   final PlaybackClock clock = PlaybackClock();
 
+  // ---- PHASE 4: audio timeline (preview mixer, same clock) ----------------------
+  late final AudioTimeline audio = _initAudio();
+  AudioTimeline _initAudio() {
+    final a = AudioTimeline();
+    a.resolvePath = (rel) => resolveAssetPath(rel) ?? rel;
+    return a;
+  }
+
+  List<AudioClip> get audioClips => audio.clips;
+
   /// Runtime (evaluated) state — only non-empty when the timeline has content
   /// or playback/scrub happened. Renderer reads through [transformFor] /
   /// [runtimeHidden] so preview == export by construction.
@@ -153,7 +165,9 @@ class EditorProvider extends ChangeNotifier {
 
   void _onClock() {
     // Any clock change (play tick, seek, stop) re-evaluates the scene.
+    // applySceneTime repositions/pauses the audio players with it.
     applySceneTime(clock.currentTimeMs);
+    if (!clock.isPlaying) audio.pauseAll();
   }
 
   /// Deterministic seek used by the export loop (spec §22): pauses the clock
@@ -195,6 +209,11 @@ class EditorProvider extends ChangeNotifier {
         _runtimeTransforms[obj.id] = evalTransform(obj, track, t);
       }
       if (obj.isCharacter) _applyCharacterTrack(obj, track, t);
+    }
+    // PHASE 4: audio follows the SAME clock (preview only — export computes
+    // its mix from project data). Never blocks the frame: fire and forget.
+    if (audio.clips.isNotEmpty) {
+      audio.sync(t, clock.isPlaying);
     }
     notifyListeners();
   }
@@ -472,6 +491,71 @@ class EditorProvider extends ChangeNotifier {
     timeline.tracks.remove(objectId);
     refreshRuntime();
     notifyListeners();
+  }
+
+  // ---- PHASE 4: audio editing (undoable, spec §26) -----------------------------
+
+  /// Adds an imported audio clip. [relPath] is project-relative
+  /// (assets/audio/…); [sourceDurationMs] comes from the import probe.
+  AudioClip addAudioClip({
+    required String name,
+    required String relPath,
+    required AudioSourceType sourceType,
+    int startMs = 0,
+    int durationMs = 2000,
+    int sourceStartMs = 0,
+    int sourceDurationMs = 0,
+  }) {
+    beginTimelineEdit();
+    final c = AudioClip(
+      id: newTimelineId('aud_'),
+      name: name,
+      filePath: relPath,
+      sourceType: sourceType,
+      startMs: startMs.clamp(0, timeline.durationMs),
+      durationMs: durationMs.clamp(50, timeline.durationMs),
+      sourceStartMs: sourceStartMs,
+      sourceDurationMs: sourceDurationMs,
+    );
+    audio.clips.add(c);
+    audio.refreshMissing();
+    notifyListeners();
+    return c;
+  }
+
+  void updateAudioClip(String id, void Function(AudioClip c) fn,
+      {bool undoable = true}) {
+    final c = audio.clips.where((a) => a.id == id).firstOrNull;
+    if (c == null) return;
+    if (undoable) beginTimelineEdit();
+    fn(c);
+    notifyListeners();
+  }
+
+  void deleteAudioClip(String id) {
+    beginTimelineEdit();
+    audio.clips.removeWhere((a) => a.id == id);
+    notifyListeners();
+  }
+
+  AudioClip? duplicateAudioClip(String id) {
+    final src = audio.clips.where((a) => a.id == id).firstOrNull;
+    if (src == null) return null;
+    beginTimelineEdit();
+    final copy = src.cloneWith(id: newTimelineId('aud_'), startMs: src.endMs);
+    audio.clips.add(copy);
+    notifyListeners();
+    return copy;
+  }
+
+  /// Re-links a missing clip to a newly located file (copied into the
+  /// project by the caller). Spec §16: Locate File.
+  void relinkAudioClip(String id, String relPath, int sourceDurationMs) {
+    updateAudioClip(id, (c) {
+      c.filePath = relPath;
+      c.sourceDurationMs = sourceDurationMs;
+      c.missing = false;
+    });
   }
 
   /// AUTO KEY hook (spec §12/§13): after a user transform edit (drag, scale,
@@ -903,6 +987,7 @@ class EditorProvider extends ChangeNotifier {
     clock.pause();
     clock.durationMs = timeline.durationMs;
     clock.seek(0);
+    audio.clear();
     _runtimeTransforms.clear();
     _runtimeHidden.clear();
     _undoStack.clear();
@@ -938,12 +1023,14 @@ class EditorProvider extends ChangeNotifier {
 class _TimelineSnapshot {
   _TimelineSnapshot.capture(EditorProvider ed)
       : timelineJson = ed.timeline.toJson(),
+        audioJson = [for (final c in ed.audioClips) c.toJson()],
         transforms = {
           for (final o in ed.objects) o.id: o.transform.toJson(),
         },
         playheadMs = ed.clock.currentTimeMs;
 
   final Map<String, dynamic> timelineJson;
+  final List<Map<String, dynamic>> audioJson;
   final Map<String, Map<String, dynamic>> transforms;
   final int playheadMs;
 
@@ -955,5 +1042,10 @@ class _TimelineSnapshot {
       final j = transforms[o.id];
       if (j != null) o.transform = ObjectTransform.fromJson(j);
     }
+    // PHASE 4: audio operations ride the same undo stack (spec §26).
+    ed.audio.clips
+      ..clear()
+      ..addAll(audioJson.map(AudioClip.fromJson));
+    ed.audio.refreshMissing();
   }
 }

@@ -38,6 +38,10 @@ dependencies:
   # min-gpl build: libx264 only, no network codecs.
   ffmpeg_kit_flutter_new_min_gpl: ^2.6.2
 
+  # Audio preview in the editor (streamed file playback — no full-file
+  # decode into Dart memory). Export mixing is done by ffmpeg-kit above.
+  audioplayers: ^6.1.0
+
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

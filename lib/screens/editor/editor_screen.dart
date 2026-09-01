@@ -16,6 +16,8 @@ import '../characters/character_picker_sheet.dart';
 import 'background_picker.dart';
 import 'export_share_bridge.dart';
 import 'panels.dart';
+import '../../audio/audio_clip.dart';
+import 'audio_picker.dart';
 import 'timeline_panel.dart';
 
 /// The professional 16:9 2D animation editor. Canvas stays true 16:9 at any
@@ -215,6 +217,41 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _editText(obj);
   }
 
+  /// + AUDIO (Phase 4): choose Music / Voice / SFX → system file picker →
+  /// copied into the project → clip lands at the playhead.
+  void _addAudio(EditorProvider ed) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('Add audio clip',
+                  style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600))),
+          for (final (type, icon, hint) in [
+            (AudioSourceType.music, Icons.music_note, 'Background music'),
+            (AudioSourceType.voice, Icons.record_voice_over, 'Voice / narration'),
+            (AudioSourceType.sfx, Icons.graphic_eq, 'Sound effect'),
+          ])
+            ListTile(
+              leading: Icon(icon, color: AppColors.accent, size: 20),
+              title: Text(type.label,
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+              subtitle: Text(hint,
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              onTap: () {
+                Navigator.pop(ctx);
+                pickAudioClip(context, type);
+              },
+            ),
+        ]),
+      ),
+    );
+  }
+
   void _editText(SceneObject obj) {
     final controller = TextEditingController(text: obj.text);
     showDialog<void>(
@@ -322,6 +359,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           PremiumButton(label: 'Text', icon: Icons.text_fields_rounded, small: true, onPressed: () => _addText(ed)),
           const SizedBox(width: 4),
           PremiumButton(label: 'Shape', icon: Icons.category_rounded, small: true, onPressed: () => _pickShape(ed)),
+          const SizedBox(width: 4),
+          PremiumButton(label: 'Audio', icon: Icons.graphic_eq_rounded, small: true, onPressed: () => _addAudio(ed)),
           const SizedBox(width: 8),
           PremiumButton(
             label: 'Export',

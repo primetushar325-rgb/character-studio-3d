@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../audio/audio_clip.dart';
 import '../../characters2d/puppet_controller.dart';
 import '../../scene/scene_object.dart';
 import '../../state/editor_provider.dart';
 import '../../timeline/playback_clock.dart';
 import '../../timeline/story_timeline.dart';
+import 'audio_picker.dart';
 
 /// PHASE 3 — the story timeline: ruler, playhead, per-object tracks with
 /// animation clips + keyframes + visibility ranges, playback controls, zoom,
@@ -207,6 +209,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
               child: Column(children: [
                 _ruler(),
                 for (final r in rows) _row(r),
+                _audioSection(),
               ]),
             ),
           ),
@@ -539,6 +542,243 @@ class _TimelinePanelState extends State<TimelinePanel> {
             ),
           ),
       ]),
+    );
+  }
+
+  // ------------------------------------------------------------------ audio
+  /// PHASE 4 — AUDIO tracks below the visual timeline (spec §13): one row
+  /// per AudioClip (draggable, edge-trimmed, tap = property sheet), plus an
+  /// add-audio row. Same ruler, same playhead, same clock.
+  Widget _audioSection() {
+    final clips = ed.audioClips;
+    final width = msToX(ed.durationMs) + 60;
+    return Column(children: [
+      Container(
+        height: 18,
+        width: width,
+        decoration: const BoxDecoration(
+            color: Color(0xFF0C0F17),
+            border: Border(top: BorderSide(color: _line))),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: const Text('AUDIO',
+            style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 2)),
+      ),
+      for (final c in clips) _audioRow(c, width),
+      _addAudioRow(width),
+    ]);
+  }
+
+  Widget _audioRow(AudioClip c, double width) {
+    final color = _audioColor(c.sourceType);
+    return SizedBox(
+      height: 32,
+      width: width,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SizedBox(
+          width: 86,
+          child: GestureDetector(
+            onTap: () => showAudioClipSheet(context, c),
+            child: Container(
+              decoration: const BoxDecoration(
+                  color: _bg2,
+                  border: Border(bottom: BorderSide(color: _line))),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              alignment: Alignment.centerLeft,
+              child: Row(children: [
+                Icon(c.missing ? Icons.audio_file : _audioIcon(c.sourceType),
+                    size: 12,
+                    color: c.muted ? Colors.white24 : color),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(c.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: c.missing ? Colors.redAccent : Colors.white70,
+                          fontSize: 10)),
+                ),
+              ]),
+            ),
+          ),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 32,
+            child: Stack(children: [
+              Container(color: _bg),
+              Positioned(
+                left: msToX(c.startMs),
+                width: (c.durationMs * pxPerMs).clamp(12, double.infinity),
+                top: 3,
+                bottom: 3,
+                child: _audioClipWidget(c, color),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _PlayheadPainter(ed, pxPerMs),
+                    size: Size.infinite),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _audioClipWidget(AudioClip c, Color color) {
+    return LayoutBuilder(builder: (_, b) {
+      final showHandles = b.maxWidth > 34;
+      return GestureDetector(
+        onTap: () => showAudioClipSheet(context, c),
+        onHorizontalDragStart: (_) {
+          ed.beginTimelineEdit();
+          setState(() => _draggingClip = true);
+        },
+        onHorizontalDragUpdate: (d) {
+          setState(() {
+            c.startMs = (c.startMs + xToMs(d.delta.dx))
+                .clamp(0, ed.durationMs - 50);
+          });
+          _snapAudio(c);
+          ed.refreshRuntime();
+        },
+        onHorizontalDragEnd: (_) {
+          _snapAudio(c);
+          ed.refreshRuntime();
+          setState(() => _draggingClip = false);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [
+              color.withOpacity(c.muted ? .15 : .85),
+              color.withOpacity(c.muted ? .10 : .60),
+            ]),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+                color: c.missing
+                    ? Colors.redAccent
+                    : Colors.white.withOpacity(.15)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: Row(children: [
+            if (showHandles) _audioEdgeHandle(c, left: true),
+            Expanded(
+              child: Text(
+                '${c.name}${c.loop ? ' ↻' : ''}${c.muted ? ' 🔇' : ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: c.muted ? Colors.white38 : Colors.black87,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700),
+              ),
+            ),
+            if (showHandles) _audioEdgeHandle(c, left: false),
+          ]),
+        ),
+      );
+    });
+  }
+
+  /// Edge drag = trim: left handle moves sourceStart (non-destructive) AND
+  /// start; right handle changes duration (spec §6).
+  Widget _audioEdgeHandle(AudioClip c, {required bool left}) {
+    return GestureDetector(
+      onHorizontalDragStart: (_) {
+        ed.beginTimelineEdit();
+        setState(() => _draggingClip = true);
+      },
+      onHorizontalDragUpdate: (d) {
+        setState(() {
+          final dm = xToMs(d.delta.dx);
+          if (left) {
+            final maxShift = c.sourceStartMs;
+            final shift = dm.clamp(-maxShift, c.durationMs - 50);
+            c.startMs += shift;
+            c.durationMs -= shift;
+            c.sourceStartMs += shift;
+          } else {
+            c.durationMs = (c.durationMs + dm).clamp(50, ed.durationMs - c.startMs);
+          }
+        });
+        ed.refreshRuntime();
+      },
+      onHorizontalDragEnd: (_) {
+        _snapAudio(c);
+        ed.refreshRuntime();
+        setState(() => _draggingClip = false);
+      },
+      child: Container(width: 10, color: Colors.black26),
+    );
+  }
+
+  void _snapAudio(AudioClip c) {
+    final snapped = snapMs(c.startMs,
+        timeline: ed.timeline,
+        thresholdMs: (12 / pxPerMs).round());
+    if (ed.durationMs - snapped > 50) c.startMs = snapped;
+  }
+
+  Widget _addAudioRow(double width) {
+    return SizedBox(
+      height: 30,
+      width: width,
+      child: Row(children: [
+        SizedBox(
+          width: 86,
+          child: IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.add, size: 14, color: Colors.white38),
+            onPressed: () => _addAudioSheet(),
+            tooltip: 'Add audio clip',
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _addAudioSheet(),
+            child: Container(
+              decoration: const BoxDecoration(
+                  color: _bg2,
+                  border: Border(bottom: BorderSide(color: _line))),
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: const Text('Add music / voice / sound effect…',
+                  style: TextStyle(color: Colors.white24, fontSize: 10)),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  void _addAudioSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _bg2,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final (type, icon, hint) in [
+            (AudioSourceType.music, Icons.music_note, 'Background music'),
+            (AudioSourceType.voice, Icons.record_voice_over, 'Voice / narration'),
+            (AudioSourceType.sfx, Icons.graphic_eq, 'Sound effect'),
+          ])
+            ListTile(
+              leading: Icon(icon, size: 20, color: _audioColor(type)),
+              title: Text(type.label,
+                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+              subtitle: Text(hint,
+                  style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              onTap: () {
+                Navigator.pop(ctx);
+                pickAudioClip(context, type);
+              },
+            ),
+        ]),
+      ),
     );
   }
 
@@ -1001,3 +1241,15 @@ class _PlayheadPainter extends CustomPainter {
   bool shouldRepaint(covariant _PlayheadPainter old) =>
       old.ed.playheadMs != ed.playheadMs || old.pxPerMs != pxPerMs;
 }
+
+IconData _audioIcon(AudioSourceType t) => switch (t) {
+      AudioSourceType.music => Icons.music_note,
+      AudioSourceType.voice => Icons.record_voice_over,
+      AudioSourceType.sfx => Icons.graphic_eq,
+    };
+
+Color _audioColor(AudioSourceType t) => switch (t) {
+      AudioSourceType.music => const Color(0xFFB28DFF),
+      AudioSourceType.voice => const Color(0xFF6CF2C4),
+      AudioSourceType.sfx => const Color(0xFFFFB37C),
+    };

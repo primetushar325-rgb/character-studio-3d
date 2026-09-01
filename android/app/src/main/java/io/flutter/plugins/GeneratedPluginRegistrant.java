@@ -16,6 +16,11 @@ public final class GeneratedPluginRegistrant {
   private static final String TAG = "GeneratedPluginRegistrant";
   public static void registerWith(@NonNull FlutterEngine flutterEngine) {
     try {
+      flutterEngine.getPlugins().add(new xyz.luan.audioplayers.AudioplayersPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin audioplayers_android, xyz.luan.audioplayers.AudioplayersPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.antonkarpenko.ffmpegkit.FFmpegKitFlutterPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin ffmpeg_kit_flutter_new_min_gpl, com.antonkarpenko.ffmpegkit.FFmpegKitFlutterPlugin", e);
