@@ -5,6 +5,7 @@ import '../../backgrounds/backgrounds.dart';
 import '../../characters2d/engine/face_rig.dart';
 import '../../characters2d/puppet_controller.dart';
 import '../../core/theme/app_colors.dart';
+import '../../scene/scene_object.dart';
 import '../../state/editor_provider.dart';
 import 'timeline_widget.dart';
 import '../../widgets/premium_button.dart';
@@ -73,36 +74,44 @@ class _EditorPanelsState extends State<EditorPanels> {
 
   // ---- CHARACTER --------------------------------------------------------------
   Widget _characterPanel(EditorProvider ed) {
-    final t = ed.transform;
-    return _card('Character Transform', [
-      _slider('Position X', t.x, (v) => ed.setTransform((s) => s.x = v)),
-      _slider('Position Y', t.y, (v) => ed.setTransform((s) => s.y = v)),
-      _slider('Scale', t.scale, (v) => ed.setTransform((s) => s.scale = v), min: 0.2, max: 3),
-      _slider('Rotation', t.rotation, (v) => ed.setTransform((s) => s.rotation = v), min: -180, max: 180),
-      _slider('Opacity', t.opacity, (v) => ed.setTransform((s) => s.opacity = v)),
+    final sel = ed.selected;
+    if (sel == null) {
+      return _card('Object', [
+        _hint('Tap an object on the canvas (or add one from the toolbar) to edit its transform.'),
+      ]);
+    }
+    final t = sel.transform;
+    final id = sel.id;
+    return _card('${sel.name} · Transform', [
+      _slider('Position X', t.x, (v) => ed.updateTransform(id, (s) => s.x = v)),
+      _slider('Position Y', t.y, (v) => ed.updateTransform(id, (s) => s.y = v)),
+      _slider('Scale X', t.scaleX, (v) => ed.updateTransform(id, (s) => s.scaleX = v), min: 0.2, max: 4),
+      _slider('Scale Y', t.scaleY, (v) => ed.updateTransform(id, (s) => s.scaleY = v), min: 0.2, max: 4),
+      _slider('Rotation', t.rotation, (v) => ed.updateTransform(id, (s) => s.rotation = v), min: -180, max: 180),
+      _slider('Opacity', t.opacity, (v) => ed.updateTransform(id, (s) => s.opacity = v)),
       const SizedBox(height: 8),
       Wrap(
         spacing: 8,
         children: [
-          _toggle('Flip H', t.flipH, (v) => ed.setTransform((s) => s.flipH = v)),
-          _toggle('Flip V', t.flipV, (v) => ed.setTransform((s) => s.flipV = v)),
+          _toggle('Flip H', t.flipH, (v) => ed.updateTransform(id, (s) => s.flipH = v)),
           PremiumButton(
             label: 'Reset',
             small: true,
-            onPressed: () => ed.setTransform((s) {
+            onPressed: () => ed.updateTransform(id, (s) {
               s.x = 0.5;
-              s.y = 0.78;
-              s.scale = 1;
+              s.y = sel.isCharacter ? 0.78 : 0.5;
+              s.scaleX = 1;
+              s.scaleY = 1;
               s.rotation = 0;
               s.flipH = false;
-              s.flipV = false;
               s.opacity = 1;
             }),
           ),
         ],
       ),
-      const SizedBox(height: 14),
-      const Text('EXPORT CHARACTER', style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+      if (sel.isCharacter) ...[
+        const SizedBox(height: 14),
+        const Text('EXPORT CHARACTER', style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
       const SizedBox(height: 8),
       Wrap(
         spacing: 8,
@@ -122,13 +131,14 @@ class _EditorPanelsState extends State<EditorPanels> {
           ),
         ],
       ),
+      ],
     ]);
   }
 
   // ---- ANIMATION -----------------------------------------------------------------
   Widget _animationPanel(EditorProvider ed) {
     final c = ed.controller;
-    if (c == null) return _hint('Add a character first.');
+    if (c == null) return _hint('Select a character object on the canvas (or add one with Char).');
     return _card('Animation', [
       Wrap(
         spacing: 6,
@@ -371,56 +381,86 @@ class _EditorPanelsState extends State<EditorPanels> {
 
   // ---- LAYERS ---------------------------------------------------------------------
   Widget _layersPanel(EditorProvider ed) {
+    // Real scene-object list, TOP layer first (matches visual stacking).
+    final ordered = [...ed.objects]..sort((a, b) => b.zIndex.compareTo(a.zIndex));
     return _card('Layers', [
-      for (var i = 0; i < ed.layers.length; i++)
-        _layerRow(ed, ed.layers[i], i),
+      _backgroundLayerRow(ed),
+      for (final o in ordered) _objectLayerRow(ed, o),
+      if (ed.objects.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 10),
+          child: Text('No objects yet — add characters, images, text or shapes from the toolbar.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.5)),
+        ),
       const SizedBox(height: 8),
-      const Text('Character always renders above the background.', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+      const Text('Background always renders below every object.', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
     ]);
   }
 
-  Widget _layerRow(EditorProvider ed, SceneLayer layer, int index) {
+  Widget _backgroundLayerRow(EditorProvider ed) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       dense: true,
-      leading: Icon(
-        layer.id == 'background'
-            ? Icons.landscape_rounded
-            : layer.id == 'character'
-                ? Icons.person_rounded
-                : layer.id == 'shadow'
-                    ? Icons.blur_on_rounded
-                    : layer.id == 'effects'
-                        ? Icons.auto_awesome_rounded
-                        : Icons.layers_rounded,
-        color: AppColors.textSecondary,
-        size: 20,
+      leading: const Icon(Icons.landscape_rounded, color: AppColors.textSecondary, size: 20),
+      title: const Text('Background', style: TextStyle(color: AppColors.textPrimary, fontSize: 13.5)),
+      subtitle: Text(ed.background.kind.name, style: const TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
+      trailing: IconButton(
+        icon: Icon(ed.backgroundVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded, size: 19, color: AppColors.textSecondary),
+        onPressed: () {
+          ed.backgroundVisible = !ed.backgroundVisible;
+          ed.refresh();
+        },
       ),
-      title: Text(layer.name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13.5)),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (layer.id == 'effects')
-            Switch(
-              value: ed.effectsVignette,
-              activeColor: AppColors.accent,
-              onChanged: ed.setEffects,
-            ),
-          if (layer.id == 'foreground')
-            Switch(
-              value: ed.foregroundHaze,
-              activeColor: AppColors.accent,
-              onChanged: ed.setForegroundHaze,
-            ),
+    );
+  }
+
+  Widget _objectLayerRow(EditorProvider ed, SceneObject o) {
+    final selected = ed.selectedId == o.id;
+    IconData icon = switch (o.type) {
+      SceneObjectType.character => Icons.person_rounded,
+      SceneObjectType.image => Icons.image_rounded,
+      SceneObjectType.text => Icons.text_fields_rounded,
+      SceneObjectType.shape => Icons.category_rounded,
+    };
+    return Container(
+      decoration: BoxDecoration(
+        color: selected ? AppColors.accentSoft : null,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        dense: true,
+        onTap: () => ed.select(o.id),
+        leading: Icon(icon, color: selected ? AppColors.accent : AppColors.textSecondary, size: 20),
+        title: Text(o.name, style: TextStyle(color: selected ? AppColors.textPrimary : AppColors.textSecondary, fontSize: 13, fontWeight: selected ? FontWeight.w800 : FontWeight.w600)),
+        subtitle: Text(o.type.name, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           IconButton(
-            icon: Icon(layer.visible ? Icons.visibility_rounded : Icons.visibility_off_rounded, size: 19, color: AppColors.textSecondary),
-            onPressed: () => ed.setLayerVisible(layer.id, !layer.visible),
+            tooltip: 'Move up',
+            icon: const Icon(Icons.arrow_upward_rounded, size: 17, color: AppColors.textSecondary),
+            onPressed: () => ed.moveObjectUp(o.id),
           ),
           IconButton(
-            icon: Icon(layer.locked ? Icons.lock_rounded : Icons.lock_open_rounded, size: 19, color: AppColors.textSecondary),
-            onPressed: () => ed.toggleLayerLock(layer.id),
+            tooltip: 'Move down',
+            icon: const Icon(Icons.arrow_downward_rounded, size: 17, color: AppColors.textSecondary),
+            onPressed: () => ed.moveObjectDown(o.id),
           ),
-        ],
+          IconButton(
+            tooltip: o.visible ? 'Hide' : 'Show',
+            icon: Icon(o.visible ? Icons.visibility_rounded : Icons.visibility_off_rounded, size: 18, color: AppColors.textSecondary),
+            onPressed: () => ed.setVisibility(o.id, !o.visible),
+          ),
+          IconButton(
+            tooltip: o.locked ? 'Unlock' : 'Lock',
+            icon: Icon(o.locked ? Icons.lock_rounded : Icons.lock_open_rounded, size: 18, color: o.locked ? AppColors.accent : AppColors.textSecondary),
+            onPressed: () => ed.toggleLock(o.id),
+          ),
+          IconButton(
+            tooltip: 'Delete',
+            icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFE2574C)),
+            onPressed: () => ed.removeObject(o.id),
+          ),
+        ]),
       ),
     );
   }

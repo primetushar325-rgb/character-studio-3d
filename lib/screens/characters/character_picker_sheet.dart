@@ -62,7 +62,9 @@ class _PickerSheet extends StatelessWidget {
                     ),
                     trailing: Icon(selected ? Icons.check_circle_rounded : Icons.play_circle_fill_rounded, color: selected ? AppColors.accent : AppColors.textMuted),
                     onTap: () {
-                      ed.loadCharacter(c.id);
+                      // Adds a NEW character object — never replaces existing
+                      // characters (Phase 2 requirement).
+                      ed.addCharacter(c.id);
                       Navigator.of(context).pop();
                     },
                   ),

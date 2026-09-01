@@ -25,6 +25,9 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.0
 
+  # firstOrNull & friends used across providers
+  collection: ^1.18.0
+
   # Android system file picker (character PNGs + background gallery images)
   file_picker: ^8.1.3
 

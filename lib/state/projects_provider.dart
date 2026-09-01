@@ -99,18 +99,15 @@ class ProjectsProvider extends ChangeNotifier {
   Future<void> _openInEditor(ProjectDocument doc) async {
     final ed = _editor;
     if (ed == null) return;
-    // Stop playback of the previous project before switching.
+    // Stop playback + clear the previous project's scene before switching.
     ed.pause();
-    ed.controller?.dispose();
-    ed.controller = null;
-    ed.character = null;
-    ed.bgImage?.dispose();
-    ed.bgImage = null;
+    ed.clearScene();
     ed.project = doc;
+    ed.projectDirPath = (await repo.projectDir(doc.id)).path;
     applyProjectToEditor(ed, doc);
     await applyProjectRuntimeToEditor(ed, doc);
     current = doc;
-    ed.notifyListeners();
+    ed.refresh();
     await saveCurrent();
   }
 
@@ -149,6 +146,7 @@ class ProjectsProvider extends ChangeNotifier {
     current = null;
     if (ed != null) {
       ed.project = null;
+      ed.projectDirPath = null;
       ed.refresh();
     }
     notifyListeners();

@@ -1,7 +1,8 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart' show Color;
 
 import '../backgrounds/backgrounds.dart';
-import '../characters2d/engine/face_rig.dart' show Expr;
+import '../scene/scene_object.dart';
 import '../state/editor_provider.dart'
     show CharacterTransform, EditorProvider;
 
@@ -58,6 +59,7 @@ class ProjectDocument {
     DateTime? updatedAt,
     this.thumbnailPath,
     this.background,
+    this.backgroundVisible = true,
     this.characterId,
     this.characterTransform,
     this.actionId,
@@ -85,7 +87,8 @@ class ProjectDocument {
 
   // ---- Phase-1 scene state (the editor's current composition) -----------
   Map<String, dynamic>? background; // serialized BgConfig (null = default)
-  String? characterId; // null = empty project (no forced placeholder)
+  bool backgroundVisible;
+  String? characterId; // legacy Phase-1 field (first character summary)
   Map<String, dynamic>? characterTransform;
   String? actionId; // e.g. 'walk'
   String? expression; // Expr name, e.g. 'happy'
@@ -116,6 +119,7 @@ class ProjectDocument {
         'updatedAt': updatedAt.millisecondsSinceEpoch,
         'thumbnailPath': thumbnailPath,
         'background': background,
+        'backgroundVisible': backgroundVisible,
         'characterId': characterId,
         'characterTransform': characterTransform,
         'actionId': actionId,
@@ -147,6 +151,7 @@ class ProjectDocument {
           (json['updatedAt'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch),
       thumbnailPath: json['thumbnailPath'] as String?,
       background: (json['background'] as Map?)?.cast<String, dynamic>(),
+      backgroundVisible: json['backgroundVisible'] as bool? ?? true,
       characterId: json['characterId'] as String?,
       characterTransform: (json['characterTransform'] as Map?)?.cast<String, dynamic>(),
       actionId: json['actionId'] as String?,
@@ -231,17 +236,25 @@ void characterTransformFromJson(Map<String, dynamic>? j, CharacterTransform t) {
 
 /// Writes the editor's live state INTO the document (mutates + timestamps).
 void captureEditorIntoProject(EditorProvider ed, ProjectDocument doc) {
+  final firstChar = ed.objectsInPaintOrder.where((o) => o.isCharacter).firstOrNull;
   doc
     ..name = ed.projectName
     ..canvasWidth = ed.canvasWidth
     ..canvasHeight = ed.canvasHeight
     ..background = bgConfigToJson(ed.background)
-    ..characterId = ed.character?.id
-    ..characterTransform = characterTransformToJson(ed.transform)
-    ..actionId = ed.controller?.actionId
-    ..expression = ed.controller?.animator.expression.name
-    ..talking = ed.controller?.talkOverlay
-    ..directionLeft = ed.controller?.directionLeft
+    ..backgroundVisible = ed.backgroundVisible
+    // Scene graph (Phase 2): all objects with transforms/state.
+    ..scene = {
+        'objects': [for (final o in ed.objects) o.toJson()],
+      }
+    // Legacy single-character summary kept so Phase-1 builds still open the
+    // project with at least the first character.
+    ..characterId = firstChar?.characterId
+    ..characterTransform = firstChar == null ? null : objectTransformToLegacy(firstChar)
+    ..actionId = firstChar?.actionId
+    ..expression = firstChar?.expression
+    ..talking = firstChar?.talking
+    ..directionLeft = firstChar?.directionLeft
     ..layers = [
       for (final l in ed.layers)
         {'id': l.id, 'visible': l.visible, 'locked': l.locked},
@@ -251,12 +264,23 @@ void captureEditorIntoProject(EditorProvider ed, ProjectDocument doc) {
     ..updatedAt = DateTime.now();
 }
 
+Map<String, dynamic> objectTransformToLegacy(SceneObject o) => {
+      'x': o.transform.x,
+      'y': o.transform.y,
+      'scale': o.transform.scaleY,
+      'rotation': o.transform.rotation,
+      'flipH': o.transform.flipH,
+      'flipV': false,
+      'opacity': o.transform.opacity,
+    };
+
 /// Applies the document state ONTO the editor (loading a project).
 void applyProjectToEditor(EditorProvider ed, ProjectDocument doc) {
   ed.projectName = doc.name;
   ed.canvasWidth = doc.canvasWidth;
   ed.canvasHeight = doc.canvasHeight;
   ed.background = bgConfigFromJson(doc.background);
+  ed.backgroundVisible = doc.backgroundVisible;
   ed.effectsVignette = doc.effectsVignette;
   ed.foregroundHaze = doc.foregroundHaze;
   characterTransformFromJson(doc.characterTransform, ed.transform);
@@ -267,33 +291,71 @@ void applyProjectToEditor(EditorProvider ed, ProjectDocument doc) {
       l.locked = saved['locked'] as bool? ?? false;
     }
   }
-  // Character + playback are applied separately (async spec/art loads).
 }
 
-/// The deferred part of [applyProjectToEditor]: character, background image,
-/// playback state. Safe to call after the library is loaded.
+/// The deferred part of [applyProjectToEditor]: builds the scene graph (with
+/// Phase-1 → Phase-2 migration for legacy single-character projects), loads
+/// artwork. Safe to call after the library is loaded.
 Future<void> applyProjectRuntimeToEditor(EditorProvider ed, ProjectDocument doc) async {
-  if (doc.characterId != null && ed.character?.id != doc.characterId) {
-    ed.loadCharacter(doc.characterId!);
+  final graph = SceneGraph.fromJson(doc.scene);
+
+  // ---- MIGRATION: Phase-1 documents have no scene.objects but a legacy
+  // characterId → synthesize one character object so old projects keep
+  // working (never crashes, never duplicates on re-save).
+  if (graph.objects.isEmpty && doc.characterId != null) {
+    final legacyT = doc.characterTransform;
+    graph.objects.add(characterObject(
+      id: 'obj_legacy_${doc.characterId}',
+      characterId: doc.characterId!,
+      name: 'Character',
+      zIndex: 1,
+      actionId: doc.actionId ?? 'idle',
+    )
+      ..expression = doc.expression
+      ..talking = doc.talking ?? false
+      ..directionLeft = doc.directionLeft ?? false
+      ..transform = ObjectTransform(
+        x: (legacyT?['x'] as num?)?.toDouble() ?? 0.5,
+        y: (legacyT?['y'] as num?)?.toDouble() ?? 0.78,
+        scaleX: (legacyT?['scale'] as num?)?.toDouble() ?? 1,
+        scaleY: (legacyT?['scale'] as num?)?.toDouble() ?? 1,
+        rotation: (legacyT?['rotation'] as num?)?.toDouble() ?? 0,
+        opacity: (legacyT?['opacity'] as num?)?.toDouble() ?? 1,
+        flipH: legacyT?['flipH'] as bool? ?? false,
+      ));
   }
-  final ctl = ed.controller;
-  if (ctl != null) {
-    Expr? expr;
-    for (final e in Expr.values) {
-      if (e.name == doc.expression) expr = e;
-    }
-    ctl.setExpression(expr ?? Expr.neutral);
-    if (doc.actionId != null) ctl.setAction(doc.actionId!);
-    if (doc.talking != null) ctl.setTalking(doc.talking!);
-    ctl.setDirection((doc.directionLeft ?? false) ? -1 : 1);
+
+  ed.objects
+    ..clear()
+    ..addAll(graph.objects);
+  ed.selectedId = ed.objects.isEmpty ? null : ed.objects.last.id;
+
+  // Build controllers (character state lives inside each object).
+  for (final o in ed.objectsInPaintOrder) {
+    if (o.isCharacter) ed.controllerFor(o);
   }
+  if (ed.objects.isNotEmpty) {
+    characterTransformFromJson(doc.characterTransform, ed.transform);
+    ed.syncTransformFromSelected();
+  }
+
+  // Background image: resolve project-relative path first.
   if (ed.background.kind == BgKind.image && ed.background.imagePath != null) {
-    try {
-      await ed.loadBgImage(ed.background.imagePath!);
-    } catch (_) {
-      // Missing/unreadable image → keep default background (friendly error).
+    final abs = ed.resolveAssetPath(ed.background.imagePath!);
+    if (abs != null) {
+      try {
+        await ed.loadBgImage(abs);
+      } catch (_) {
+        // Missing/unreadable image → keep default background.
+      }
     }
   }
+
+  // Warm the image-object cache.
+  for (final o in ed.objects) {
+    if (o.type == SceneObjectType.image) ed.imageFor(o);
+  }
+  ed.refresh();
 }
 
 /// Tiny typedef placeholder used by [ProjectDocument.thumbnailOf] so the
