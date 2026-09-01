@@ -26,23 +26,13 @@ class StudioBottomNav extends StatelessWidget {
 
   static const List<StudioNavItem> items = [
     StudioNavItem(
-        icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
+        icon: Icons.edit_outlined, activeIcon: Icons.edit_rounded, label: 'Editor'),
     StudioNavItem(
-        icon: Icons.view_in_ar_outlined,
-        activeIcon: Icons.view_in_ar_rounded,
+        icon: Icons.accessibility_new_outlined,
+        activeIcon: Icons.accessibility_new_rounded,
         label: 'Characters'),
     StudioNavItem(
-        icon: Icons.auto_awesome_outlined,
-        activeIcon: Icons.auto_awesome_rounded,
-        label: 'Create'),
-    StudioNavItem(
-        icon: Icons.favorite_border_rounded,
-        activeIcon: Icons.favorite_rounded,
-        label: 'Favorites'),
-    StudioNavItem(
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings_rounded,
-        label: 'Settings'),
+        icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded, label: 'Settings'),
   ];
 
   @override

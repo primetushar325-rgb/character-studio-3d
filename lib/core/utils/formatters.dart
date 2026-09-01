@@ -60,14 +60,14 @@ class Formatters {
     return '${seconds.toStringAsFixed(2)}s';
   }
 
-  /// "Fox.glb" -> "Fox"
+  /// "tiger.png" -> "tiger"
   static String prettyFileBase(String fileName) {
     final dot = fileName.lastIndexOf('.');
     if (dot <= 0) return fileName;
     return fileName.substring(0, dot);
   }
 
-  /// "Fox.glb" -> "glb"
+  /// "tiger.png" -> "png"
   static String extensionOf(String fileName) {
     final dot = fileName.lastIndexOf('.');
     if (dot <= 0 || dot == fileName.length - 1) return '';

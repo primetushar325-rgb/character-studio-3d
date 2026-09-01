@@ -1,10 +1,10 @@
-/// Global constants for Character Studio 3D.
+/// Global constants for 2D Character Studio.
 class AppConstants {
   AppConstants._();
 
-  static const String appName = 'Character Studio 3D';
+  static const String appName = '2D Character Studio';
   static const String appTagline = 'Create. Animate. Preview.';
-  static const String appVersion = '1.2.0';
+  static const String appVersion = '2.0.0';
 
   // Native method channel
   static const String nativeChannel = 'app.characterstudio/native';
