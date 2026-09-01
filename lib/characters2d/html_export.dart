@@ -10,8 +10,7 @@ import 'character_json.dart';
 /// dependencies. Works by just opening it in any browser.
 String buildSingleFileHtml(Character2DSpec spec, PaletteColors palette) {
   final json = jsonEncode(buildCharacterJson(spec, palette));
-  return '''
-<!DOCTYPE html>
+  return '''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">

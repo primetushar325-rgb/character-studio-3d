@@ -29,6 +29,7 @@ Map<String, dynamic> buildCharacterJson(
   final faceView = const FaceView();
 
   return {
+    'id': spec.id,
     'name': spec.name,
     'version': '1.0',
     'type': '2D_RIGGED_CHARACTER',
