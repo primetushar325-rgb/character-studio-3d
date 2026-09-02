@@ -1,5 +1,6 @@
-// Dev-only visual probe: renders the Fox (and other built-ins for contrast)
-// to PNGs under /home/user so the artwork can be eyeballed. Not part of CI.
+// Visual regression probe: renders the Fox (and a legacy baseline) to PNGs in
+// the system temp dir and asserts real coverage — catches 'parts not painted',
+// 'all-black silhouette' and 'sleep off-canvas' class regressions.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -62,7 +63,7 @@ void main() {
       ));
       await tester.pump();
       await tester.runAsync(() async {
-        await _save(w, '/home/user/fox_$name.png', const Size(300, 360));
+        await _save(w, '${Directory.systemTemp.path}/fox_$name.png', const Size(300, 360));
         final img = await w.boundary.toImage(pixelRatio: 1);
         final bd = (await img.toByteData(format: ui.ImageByteFormat.rawRgba))!;
         final px = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
@@ -116,7 +117,7 @@ void main() {
       ));
       await tester.pump();
       await tester.runAsync(() async {
-        await _save(w, '/home/user/tiger_$name.png', const Size(300, 360));
+        await _save(w, '${Directory.systemTemp.path}/tiger_$name.png', const Size(300, 360));
         final img = await w.boundary.toImage(pixelRatio: 1);
         final bd = (await img.toByteData(format: ui.ImageByteFormat.rawRgba))!;
         final px = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
