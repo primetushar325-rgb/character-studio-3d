@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_colors.dart';
-import '../state/editor_provider.dart';
 import '../state/library2d_provider.dart';
 import '../state/shell_provider.dart';
 import '../widgets/studio_bottom_nav.dart';
 import '../screens/characters/characters2d_screen.dart';
-import '../screens/editor/editor_screen.dart';
+import '../screens/home/home_screen.dart';
 import '../screens/settings/settings_screen2.dart';
 
-/// App shell: Editor · Characters · Settings. The 16:9 editor is home.
+/// App shell: HOME · Characters · Settings. The app opens on HOME (project
+/// list / new project); the editor is pushed full-screen per project via
+/// [openProjectEditor]. Spec §1/§19: no project is auto-created and no
+/// character is auto-loaded into the editor.
 class AppShell extends StatelessWidget {
   const AppShell({super.key});
 
@@ -18,10 +20,9 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final shell = context.watch<ShellProvider>();
     final library = Provider.of<Library2DProvider>(context, listen: false);
-    final editor = Provider.of<EditorProvider>(context, listen: false);
 
     final screens = [
-      const EditorScreen(),
+      const HomeScreen(),
       Characters2DScreen(),
       const SettingsScreen2(),
     ];
@@ -32,9 +33,9 @@ class AppShell extends StatelessWidget {
       bottomNavigationBar: StudioBottomNav(
         currentIndex: shell.index,
         onTap: (i) {
-          // Keep the editor's character picker in sync with the library.
+          // Keep the character picker in sync with the library. The editor
+          // itself stays untouched until a real project is opened.
           library.load();
-          editor.controller ?? (editor.loadCharacter(library.all.first.id));
           shell.go(i);
         },
       ),

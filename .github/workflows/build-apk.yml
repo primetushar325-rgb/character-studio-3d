@@ -48,27 +48,29 @@ jobs:
       - name: Build release APKs (arm64 + armeabi-v7a)
         run: |
           flutter build apk --release --target-platform android-arm64
-          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.4.0-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.4.1-arm64-v8a.apk
           flutter build apk --release --target-platform android-arm -PtargetAbi=armeabi-v7a
-          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.4.0-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-release.apk 2DCharacterStudio-v2.4.1-armeabi-v7a.apk
           ls -lh *.apk
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 2DCharacterStudio-apk-v2-4-0
-          path: 2DCharacterStudio-v2.4.0-*.apk
+          name: 2DCharacterStudio-apk-v2-4-1
+          path: 2DCharacterStudio-v2.4.1-*.apk
           retention-days: 90
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.4.0
-          name: Character Studio 2D v2.4.0 — Scene Graph, Story Timeline, Audio
+          tag_name: v2.4.1
+          name: Character Studio 2D v2.4.1 — HOME screen fix
           body: |
-            **Character Studio 2D v2.4.0** — offline 2D character animation studio with a real multi-object scene editor, story timeline and audio system.
+            **Character Studio 2D v2.4.1** — offline 2D story/video editor: projects, multi-object scene editor, story timeline, audio.
 
-            🆕 Phases 2–4:
+            🔧 v2.4.1: the app now opens on the **HOME screen** (New Project / My Projects / Characters / Settings). In v2.4.0 the shell still opened the bare editor tab by mistake — the whole project system was there, just unreachable from the entry point.
+
+            🆕 Phases 1–4:
 
             **Phase 2 — Scene graph & multi-object editor**
             - Real scene graph: characters, images, text and shapes as independent, movable/scalable/rotatable layers with z-order, hide and lock
@@ -91,9 +93,9 @@ jobs:
             - MP4 export now contains the mixed audio, rendered deterministically from the project (never a blind file attach)
             - Missing audio files offer Locate / Remove and never crash
 
-            **Install:** download `2DCharacterStudio-v2.4.0-arm64-v8a.apk` (most devices) or `2DCharacterStudio-v2.4.0-armeabi-v7a.apk` (older 32-bit devices) below, allow "install unknown apps" if prompted, and open it. Signed with a debug key — safe for testing/sideloading.
+            **Install:** download `2DCharacterStudio-v2.4.1-arm64-v8a.apk` (most devices) or `2DCharacterStudio-v2.4.1-armeabi-v7a.apk` (older 32-bit devices) below, allow "install unknown apps" if prompted, and open it. Signed with a debug key — safe for testing/sideloading.
           files: |
-            2DCharacterStudio-v2.4.0-arm64-v8a.apk
-            2DCharacterStudio-v2.4.0-armeabi-v7a.apk
+            2DCharacterStudio-v2.4.1-arm64-v8a.apk
+            2DCharacterStudio-v2.4.1-armeabi-v7a.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

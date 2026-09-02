@@ -5,7 +5,7 @@ description: >-
   characters, keyframe animation, backgrounds, layers and real frame-based
   video/GIF/PNG export. 100% 2D — no 3D pipeline anywhere.
 publish_to: "none"
-version: 2.1.0+5
+version: 2.4.1+6
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
