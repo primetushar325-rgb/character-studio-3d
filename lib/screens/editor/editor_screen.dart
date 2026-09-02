@@ -546,8 +546,13 @@ class _ExportDialogState extends State<ExportDialog> {
     );
   }
 
+  bool _cancelRequested = false;
+
   Future<void> _start(EditorProvider ed) async {
-    setState(() => _running = true);
+    setState(() {
+      _running = true;
+      _cancelRequested = false;
+    });
     final service = ExportService2D();
     try {
       final res = await service.export(
@@ -560,6 +565,7 @@ class _ExportDialogState extends State<ExportDialog> {
         durationSeconds: ed.durationMs / 1000.0,
         loops: _type == ExportType.png ? 1 : _loops,
         onProgress: (p) => setState(() => _progress = p),
+        shouldCancel: () => _cancelRequested,
       );
       // Save videos/GIFs into Movies (MediaStore) on Android.
       if (_type == ExportType.video || _type == ExportType.gif) {
@@ -592,6 +598,18 @@ class _ExportDialogState extends State<ExportDialog> {
             _progress!.phase.name.toUpperCase(),
             style: const TextStyle(color: AppColors.textMuted, fontSize: 11, letterSpacing: 1.2),
           ),
+          if (_running && _progress!.phase == ExportPhase.rendering) ...[
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _cancelRequested
+                  ? null
+                  : () => setState(() => _cancelRequested = true),
+              child: Text(
+                _cancelRequested ? 'Cancelling…' : 'Cancel export',
+                style: const TextStyle(color: AppColors.danger, fontSize: 13),
+              ),
+            ),
+          ],
         ],
       );
 

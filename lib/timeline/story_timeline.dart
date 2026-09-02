@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../scene/scene_object.dart';
+import 'effects.dart';
 
 /// PHASE 3 — real story timeline: data model + deterministic evaluator math.
 ///
@@ -185,19 +186,25 @@ class TimelineTrack {
     List<AnimClip>? clips,
     List<VisibilityClip>? visClips,
     List<TransformKeyframe>? keyframes,
+    List<EffectClip>? effects,
   })  : clips = [...?clips]..sort((a, b) => a.startMs.compareTo(b.startMs)),
         visClips = [...?visClips]..sort((a, b) => a.startMs.compareTo(b.startMs)),
-        keyframes = [...?keyframes]..sort((a, b) => a.timeMs.compareTo(b.timeMs));
+        keyframes = [...?keyframes]..sort((a, b) => a.timeMs.compareTo(b.timeMs)),
+        effects = [...?effects]..sort((a, b) => a.startMs.compareTo(b.startMs));
 
   final String objectId; // SceneObject.id, or kBackgroundTrackId
   final List<AnimClip> clips;
   final List<VisibilityClip> visClips;
   final List<TransformKeyframe> keyframes;
 
+  /// PHASE 6 effect clips (fade/shake/zoom/pulse/flash).
+  final List<EffectClip> effects;
+
   void sortAll() {
     clips.sort((a, b) => a.startMs.compareTo(b.startMs));
     visClips.sort((a, b) => a.startMs.compareTo(b.startMs));
     keyframes.sort((a, b) => a.timeMs.compareTo(b.timeMs));
+    effects.sort((a, b) => a.startMs.compareTo(b.startMs));
   }
 
   /// Animation clip active at scene time [tMs] (latest-starting wins on
@@ -241,6 +248,7 @@ class TimelineTrack {
         'clips': clips.map((c) => c.toJson()).toList(),
         'visClips': visClips.map((c) => c.toJson()).toList(),
         'keyframes': keyframes.map((k) => k.toJson()).toList(),
+        'effects': effects.map((e) => e.toJson()).toList(),
       };
 
   static TimelineTrack fromJson(Map<String, dynamic> j) => TimelineTrack(
@@ -253,6 +261,9 @@ class TimelineTrack {
             .toList(),
         keyframes: (j['keyframes'] as List?)
             ?.map((e) => TransformKeyframe.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        effects: (j['effects'] as List?)
+            ?.map((e) => EffectClip.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 }
@@ -315,7 +326,10 @@ class EvaluatedTransform {
     required this.scaleY,
     required this.rotation,
     required this.opacity,
+    this.flash = 0,
   });
+
+  /// White-flash overlay amount from effect clips (0 = none).
 
   final double x;
   final double y;
@@ -323,6 +337,7 @@ class EvaluatedTransform {
   final double scaleY;
   final double rotation;
   final double opacity;
+  final double flash;
 
   static EvaluatedTransform of(ObjectTransform t) => EvaluatedTransform(
         x: t.x,

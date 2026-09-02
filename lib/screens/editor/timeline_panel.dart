@@ -6,6 +6,7 @@ import '../../characters2d/puppet_controller.dart';
 import '../../scene/scene_object.dart';
 import '../../state/editor_provider.dart';
 import '../../timeline/playback_clock.dart';
+import '../../timeline/effects.dart';
 import '../../timeline/story_timeline.dart';
 import 'audio_picker.dart';
 
@@ -825,6 +826,15 @@ class _TimelinePanelState extends State<TimelinePanel> {
               _visSheet(r, track);
             },
           ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome, color: Color(0xFFB28DFF), size: 20),
+            title: const Text('Effects… (fade / shake / zoom / pulse / flash)',
+                style: TextStyle(color: Colors.white70, fontSize: 13)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _effectSheet(r, track);
+            },
+          ),
           if (track != null)
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
@@ -836,6 +846,72 @@ class _TimelinePanelState extends State<TimelinePanel> {
               },
             ),
         ]),
+      ),
+    );
+  }
+
+  /// PHASE 6 — effect clips: add at the playhead, review + delete existing.
+  void _effectSheet(_RowSpec r, TimelineTrack? track) {
+    const kinds = [
+      (EffectKind.fadeIn, Icons.gradient, 'Fade In — opacity 0 → 1'),
+      (EffectKind.fadeOut, Icons.gradient, 'Fade Out — opacity 1 → 0'),
+      (EffectKind.shake, Icons.vibration, 'Shake — deterministic wobble'),
+      (EffectKind.zoom, Icons.zoom_in, 'Zoom — smooth scale-up'),
+      (EffectKind.pulse, Icons.favorite, 'Pulse — beat scale'),
+      (EffectKind.flash, Icons.flash_on, 'Flash — white pop'),
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _bg2,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('Effects — ${r.name}',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+            if (track != null && track.effects.isNotEmpty) ...[
+              for (final e in track.effects)
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.auto_awesome, color: Color(0xFFB28DFF), size: 18),
+                  title: Text(
+                      '${effectLabel(e.kind)}  ·  ${_fmt(e.startMs)} → ${_fmt(e.endMs)}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                    onPressed: () {
+                      ed.deleteEffectClip(r.id, e.id);
+                      Navigator.pop(ctx);
+                      _effectSheet(r, ed.timeline.trackOf(r.id));
+                    },
+                  ),
+                ),
+              const Divider(color: Colors.white12, height: 8),
+            ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Text('Add at playhead (${_fmt(ed.playheadMs)})',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ),
+            for (final (k, icon, hint) in kinds)
+              ListTile(
+                dense: true,
+                leading: Icon(icon, color: const Color(0xFFB28DFF), size: 18),
+                title: Text(hint, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ed.addEffectClip(r.id, k, startMs: ed.playheadMs);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    duration: const Duration(milliseconds: 1200),
+                    content: Text('${effectLabel(k)} added at ${_fmt(ed.playheadMs)}'),
+                  ));
+                },
+              ),
+          ],
+        ),
       ),
     );
   }

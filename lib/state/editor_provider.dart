@@ -20,6 +20,7 @@ import '../audio/audio_clip.dart';
 import '../audio/audio_timeline.dart';
 import '../state/library2d_provider.dart';
 import '../timeline/playback_clock.dart';
+import '../timeline/effects.dart';
 import '../timeline/story_timeline.dart';
 
 /// One composition layer entry for the Layers panel (v1 list kept for
@@ -160,6 +161,7 @@ class EditorProvider extends ChangeNotifier {
       rotation: rt.rotation,
       opacity: rt.opacity.clamp(0, 1),
       flipH: obj.transform.flipH,
+      flash: rt.flash.clamp(0, 1),
     );
   }
 
@@ -207,6 +209,22 @@ class EditorProvider extends ChangeNotifier {
       }
       if (track != null && track.keyframes.isNotEmpty) {
         _runtimeTransforms[obj.id] = evalTransform(obj, track, t);
+      }
+      // PHASE 6: effect clips layer on top of any keyframe transform (or the
+      // static transform when the track has no keyframes). Same evaluation
+      // feeds preview and frame-rendered export.
+      if (track != null && track.effects.isNotEmpty) {
+        final base = _runtimeTransforms[obj.id] ?? EvaluatedTransform.of(obj.transform);
+        final ev = evaluateEffects(track.effects, t);
+        _runtimeTransforms[obj.id] = EvaluatedTransform(
+          x: base.x + ev.dx,
+          y: base.y + ev.dy,
+          scaleX: base.scaleX * ev.scaleMul,
+          scaleY: base.scaleY * ev.scaleMul,
+          rotation: base.rotation,
+          opacity: base.opacity * ev.opacityMul,
+          flash: ev.flash,
+        );
       }
       if (obj.isCharacter) _applyCharacterTrack(obj, track, t);
     }
@@ -381,6 +399,54 @@ class EditorProvider extends ChangeNotifier {
     return clip;
   }
 
+  // ---- PHASE 6: effect clips (data-driven, deterministic) ---------------------
+
+  /// Adds an effect clip at [startMs]. Seed derives from the id so every
+  /// evaluation (preview scrub, export frame) produces identical shake.
+  EffectClip addEffectClip(String objectId, EffectKind kind,
+      {required int startMs, int? durationMs, double intensity = 1}) {
+    beginTimelineEdit();
+    final track = timeline.ensureTrack(objectId);
+    final defaults = <EffectKind, int>{
+      EffectKind.fadeIn: 600,
+      EffectKind.fadeOut: 600,
+      EffectKind.shake: 800,
+      EffectKind.zoom: 1200,
+      EffectKind.pulse: 1200,
+      EffectKind.flash: 400,
+    };
+    final id = newTimelineId('fx_');
+    final clip = EffectClip(
+      id: id,
+      kind: kind,
+      startMs: startMs.clamp(0, timeline.durationMs),
+      durationMs: (durationMs ?? defaults[kind]!)
+          .clamp(120, timeline.durationMs),
+      intensity: intensity.clamp(0, 2),
+      seed: id.hashCode & 0xFFFF,
+    );
+    track.effects.add(clip);
+    track.sortAll();
+    refreshRuntime();
+    notifyListeners();
+    return clip;
+  }
+
+  void deleteEffectClip(String objectId, String effectId) {
+    final track = timeline.trackOf(objectId);
+    if (track == null) return;
+    beginTimelineEdit();
+    track.effects.removeWhere((e) => e.id == effectId);
+    if (track.clips.isEmpty &&
+        track.keyframes.isEmpty &&
+        track.visClips.isEmpty &&
+        track.effects.isEmpty) {
+      timeline.tracks.remove(objectId);
+    }
+    refreshRuntime();
+    notifyListeners();
+  }
+
   void deleteAnimClip(String objectId, String clipId) {
     final track = timeline.trackOf(objectId);
     if (track == null) return;
@@ -388,7 +454,8 @@ class EditorProvider extends ChangeNotifier {
     track.clips.removeWhere((c) => c.id == clipId);
     if (track.clips.isEmpty &&
         track.keyframes.isEmpty &&
-        track.visClips.isEmpty) {
+        track.visClips.isEmpty &&
+        track.effects.isEmpty) {
       timeline.tracks.remove(objectId);
     }
     refreshRuntime();

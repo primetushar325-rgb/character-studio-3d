@@ -15,6 +15,21 @@ import 'scene_object.dart';
 /// and the export frame renderer all use this ONE function: WYSIWYG by
 /// construction. Object hit-testing uses the same geometry via
 /// [objectBounds].
+
+/// Layer paint for one object: evaluated opacity + white flash overlay from
+/// effect clips. Applied at the saveLayer composite so the flash tints the
+/// whole object uniformly (preview AND export share this renderer).
+Paint _objectLayerPaint(ObjectTransform t) {
+  final paint = Paint()..color = Colors.white.withOpacity(t.opacity.clamp(0.0, 1.0));
+  if (t.flash > 0.001) {
+    paint.colorFilter = ui.ColorFilter.mode(
+      Colors.white.withOpacity(t.flash.clamp(0.0, 1.0)),
+      BlendMode.srcOver,
+    );
+  }
+  return paint;
+}
+
 void paintScene(Canvas canvas, Size size, EditorProvider ed) {
   final bg = ed.background;
 
@@ -109,7 +124,7 @@ void _paintCharacterObject(Canvas canvas, Size size, EditorProvider ed, SceneObj
   if (controller == null) return;
   final t = ed.evaluatedTransformView(obj);
 
-  canvas.saveLayer(Offset.zero & size, Paint()..color = Colors.white.withOpacity(t.opacity));
+  canvas.saveLayer(Offset.zero & size, _objectLayerPaint(t));
 
   // Ground shadow (matches the character's feet).
   final shadowW = size.height * 0.24 * t.scaleX;
@@ -154,7 +169,7 @@ void _paintImageObject(Canvas canvas, Size size, EditorProvider ed, SceneObject 
   final w = h * (image.width / image.height) * (t.scaleX / t.scaleY);
   canvas.saveLayer(
     Offset.zero & size,
-    Paint()..color = Colors.white.withOpacity(t.opacity),
+    _objectLayerPaint(t),
   );
   canvas.translate(size.width * t.x, size.height * t.y);
   if (t.rotation != 0) canvas.rotate(t.rotation * math.pi / 180);
@@ -249,7 +264,7 @@ void _paintShapeObject(Canvas canvas, Size size, EditorProvider ed, SceneObject 
 
   canvas.saveLayer(
     Offset.zero & size,
-    Paint()..color = Colors.white.withOpacity(t.opacity),
+    _objectLayerPaint(t),
   );
   canvas.translate(size.width * t.x, size.height * t.y);
   if (t.rotation != 0) canvas.rotate(t.rotation * math.pi / 180);

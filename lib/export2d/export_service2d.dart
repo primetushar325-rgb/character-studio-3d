@@ -17,6 +17,12 @@ import 'gif_encoder.dart';
 /// GIF (pure Dart), PNG and PNG sequences.
 enum ExportPhase { idle, preparing, rendering, encoding, finalizing, done, failed }
 
+/// Thrown when the user cancels an in-flight export. Temp frames are cleaned
+/// up; nothing partial is written to the output directory.
+class ExportCancelled implements Exception {
+  const ExportCancelled();
+}
+
 enum ExportType { video, gif, png, pngSequence }
 
 class ExportProgress {
@@ -50,6 +56,7 @@ class ExportService2D {
     required double durationSeconds,
     required int loops,
     void Function(ExportProgress)? onProgress,
+    bool Function()? shouldCancel,
   }) async {
     final op = onProgress ?? (_) {};
     try {
@@ -61,6 +68,10 @@ class ExportService2D {
       op(const ExportProgress(ExportPhase.rendering, 0.05, 'Rendering frames…'));
       final pngPaths = <String>[];
       for (var i = 0; i < total; i++) {
+        if (shouldCancel?.call() ?? false) {
+          framesDir.deleteSync(recursive: true);
+          throw const ExportCancelled();
+        }
         final t = (i / fps) % durationSeconds;
         // PHASE 3: evaluate the story timeline at this frame — the exact same
         // evaluation the preview uses (spec §22: preview == export).

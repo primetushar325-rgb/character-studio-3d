@@ -18,12 +18,16 @@ class ObjectTransform {
     this.rotation = 0,
     this.opacity = 1,
     this.flipH = false,
+    this.flash = 0,
   });
 
   /// 0..1 of canvas width (object anchor point).
   double x;
   /// 0..1 of canvas height (character ground line / object center).
   double y;
+
+  /// 0..1 white-flash amount from timeline effect clips (evaluated).
+  double flash;
   double scaleX;
   double scaleY;
   double rotation; // degrees, clockwise
