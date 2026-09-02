@@ -20,13 +20,17 @@ class CharacterStudioRoot extends StatelessWidget {
   Widget build(BuildContext context) {
     final repo = Character2DRepository();
     final library2d = Library2DProvider(repo: repo)..load();
+    // THE app wiring: the projects provider owns the editor provider from
+    // the very start (open/create/autosave all depend on this binding).
+    final editor2d = EditorProvider(library2d);
+    final projects2d = ProjectsProvider()..bindEditor(editor2d);
 
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: library2d),
         ChangeNotifierProvider(create: (_) => ShellProvider()),
-        ChangeNotifierProvider(create: (_) => EditorProvider(library2d)),
-        ChangeNotifierProvider(create: (_) => ProjectsProvider()),
+        ChangeNotifierProvider.value(value: editor2d),
+        ChangeNotifierProvider.value(value: projects2d),
       ],
       child: const CharacterStudioApp(),
     );

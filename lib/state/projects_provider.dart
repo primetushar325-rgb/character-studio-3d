@@ -24,20 +24,48 @@ class ProjectsProvider extends ChangeNotifier {
   ProjectDocument? current;
   bool loaded = false;
 
+  /// Set when listing failed — the UI shows a retry affordance instead of a
+  /// spinner that never ends. Null once a load succeeds.
+  String? loadError;
+
   EditorProvider? _editor;
   Timer? _debounce;
   bool _saving = false;
+  Future<void>? _loadInFlight;
 
-  Future<void> load() async {
-    if (loaded) return;
-    projects = await repo.list();
-    loaded = true;
-    notifyListeners();
+  /// Loads the project list exactly once per session (idempotent + guarded
+  /// against concurrent calls — everyone awaits the SAME in-flight load, so
+  /// Home init / shortcuts / retry can never race). Never throws: failures
+  /// land in [loadError].
+  Future<void> load() {
+    if (loaded) return Future.value();
+    return _loadInFlight ??= _load().whenComplete(() => _loadInFlight = null);
   }
 
-  /// Public refresh of the project list (used after editor closes).
+  Future<void> _load() async {
+    loadError = null;
+    try {
+      projects = await repo.list();
+      loaded = true;
+    } catch (e) {
+      // Storage unavailable (first run, IO error…): keep the UI usable.
+      loaded = false;
+      loadError = 'Could not read projects: $e';
+      debugPrint('ProjectsProvider.load failed: $e');
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  /// Public refresh of the project list (used after editor closes). A failure
+  // keeps the previous list and is logged — never breaks the Home screen.
   Future<void> reloadList() async {
-    projects = await repo.list();
+    try {
+      projects = await repo.list();
+      loadError = null;
+    } catch (e) {
+      debugPrint('ProjectsProvider.reloadList failed: $e');
+    }
     notifyListeners();
   }
 
@@ -90,15 +118,29 @@ class ProjectsProvider extends ChangeNotifier {
 
   /// Opens an existing project: applies its state to the editor.
   Future<void> openProject(String projectId) async {
-    final doc = await repo.load(projectId);
-    if (doc == null) return;
+    ProjectDocument? doc;
+    try {
+      doc = await repo.load(projectId);
+    } catch (e) {
+      debugPrint('openProject($projectId) load failed: $e');
+      return;
+    }
+    if (doc == null) {
+      debugPrint('openProject($projectId): missing or unreadable project.json');
+      return;
+    }
     await _openInEditor(doc);
     notifyListeners();
   }
 
   Future<void> _openInEditor(ProjectDocument doc) async {
     final ed = _editor;
-    if (ed == null) return;
+    if (ed == null) {
+      // Must never happen: main.dart binds the editor at startup. If it
+      // ever does, fail loudly instead of silently doing nothing.
+      debugPrint('openProject: editor is NOT bound — call bindEditor()');
+      return;
+    }
     // Stop playback + clear the previous project's scene before switching.
     ed.pause();
     ed.clearScene();

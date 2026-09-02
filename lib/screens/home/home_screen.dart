@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../project/project_document.dart';
+import '../../state/editor_provider.dart';
 import '../../state/projects_provider.dart';
 import '../../state/shell_provider.dart';
 import '../../widgets/glass_card.dart';
@@ -14,8 +15,25 @@ import '../project/project_setup_screen.dart';
 import '../project/editor_launcher.dart';
 
 /// HOME — the app entry point. Projects first, editor only through a project.
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // THE load entry: storage → list → UI. Idempotent (guarded inside the
+    // provider), so multiple init calls can never race. The editor binding
+    // normally happens in main.dart; re-assert here so ANY entry point
+    // (tests, deep links) is equally safe. bindEditor ignores duplicates.
+    final projects = context.read<ProjectsProvider>();
+    projects.bindEditor(context.read<EditorProvider>());
+    projects.load();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +88,36 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             const SliverToBoxAdapter(child: SectionHeader(title: 'MY PROJECTS')),
-            if (!projects.loaded)
+            if (projects.loadError != null)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                sliver: SliverToBoxAdapter(
+                  child: GlassCard(
+                    child: Column(
+                      children: [
+                        const Icon(Icons.folder_off_rounded, color: AppColors.textMuted, size: 30),
+                        const SizedBox(height: 8),
+                        const Text('Unable to load projects',
+                            style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Project storage could not be read.\nYour projects are not deleted.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.5),
+                        ),
+                        const SizedBox(height: 10),
+                        PremiumButton(
+                          label: 'RETRY',
+                          icon: Icons.refresh_rounded,
+                          small: true,
+                          onPressed: () => projects.reloadList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else if (!projects.loaded)
               const SliverPadding(
                 padding: EdgeInsets.all(40),
                 sliver: SliverToBoxAdapter(child: Center(child: CircularProgressIndicator(color: AppColors.accent))),

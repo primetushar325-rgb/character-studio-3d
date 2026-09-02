@@ -12,7 +12,7 @@ Future<void> openProjectEditor(BuildContext context, String projectId) async {
   if (projects.current == null) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Project could not be opened.')),
+        const SnackBar(content: Text('Unable to open this project.')),
       );
     }
     return;
