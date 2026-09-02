@@ -308,10 +308,10 @@ void main() {
   });
 
   group('The three original characters', () {
-    test('built-ins carry §32 metadata (tiger is the 4th default)', () {
-      expect(CharacterCatalog.builtIn.length, 4);
+    test('built-ins carry §32 metadata (fox leads, tiger is still default-free)', () {
+      expect(CharacterCatalog.builtIn.length, 5);
       final ids = CharacterCatalog.builtIn.map((c) => c.id).toList();
-      expect(ids, ['tiger', 'bd_farmer_male', 'village_girl', 'school_teacher']);
+      expect(ids, ['fox', 'tiger', 'bd_farmer_male', 'village_girl', 'school_teacher']);
       for (final spec in CharacterCatalog.builtIn) {
         final m = spec.metadata();
         expect(m['type'], '2D_RIGGED_CHARACTER');
@@ -387,7 +387,7 @@ void main() {
       for (final m in MouthShapes.all.values) {
         expect(m, isNotNull);
       }
-      expect(painted, 320); // 4 chars × 8 poses × 10 expressions
+      expect(painted, 400); // 5 chars × 8 poses × 10 expressions
       recorder.endRecording().dispose();
     });
 

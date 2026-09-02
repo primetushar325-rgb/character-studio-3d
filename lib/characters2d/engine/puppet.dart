@@ -59,20 +59,27 @@ class PuppetPainter extends CustomPainter {
     canvas.scale(s, s);
 
     if (showGroundShadow) {
+      // Soft contact shadow at the ground line (parts are drawn with feet at
+      // y=0, so the shadow belongs just under them — previously it floated
+      // at mid-body height, hidden inside the silhouette).
       final lying = frame.pose.bodyTilt.abs() / 84;
       final w = 46 + lying * 52;
       canvas.drawOval(
-        Rect.fromCenter(center: Offset(frame.pose.dx, -Rig2D.byKind(spec.rigKind).groundY + 5), width: w, height: 9),
+        Rect.fromCenter(center: Offset(frame.pose.dx, -4), width: w, height: 9),
         Paint()..color = const Color(0x2E000000),
       );
     }
 
     if (directionLeft) canvas.scale(-1, 1);
 
-    canvas.translate(frame.pose.dx, frame.pose.dy);
+    // Rotate FIRST, then translate: the pose's (dx, dy) offsets are defined
+    // in the body frame (e.g. sleep's dy=130 slides the lying body along its
+    // own axis). Translating before rotating dumped sleeping characters below
+    // the ground line, off-canvas.
     if (frame.pose.bodyTilt != 0) {
       canvas.rotate(frame.pose.bodyTilt * math.pi / 180);
     }
+    canvas.translate(frame.pose.dx, frame.pose.dy);
 
     final faceView = FaceView(
       blink: frame.blink,

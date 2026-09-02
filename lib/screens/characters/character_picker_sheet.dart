@@ -39,6 +39,7 @@ class _PickerSheet extends StatelessWidget {
               PremiumButton(label: 'From Prompt', icon: Icons.auto_awesome_rounded, small: true, onPressed: () => showPromptDialog(context)),
               const SizedBox(width: 10),
               PremiumButton(label: 'Import PNG', icon: CollectionsPlaceholder.icon, small: true, onPressed: () => importPngCharacter(context)),
+              PremiumButton(label: 'Import ZIP', icon: Icons.folder_zip_outlined, small: true, onPressed: () => importZipPackCharacter(context)),
             ],
           ),
           const SizedBox(height: 10),

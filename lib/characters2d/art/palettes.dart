@@ -186,6 +186,27 @@ class Palettes {
     earInnerC: Color(0xFFEFA3A3),
   );
 
+  /// PHASE 5 — Premium Fox: warm orange fur, cream belly, white tail tip,
+  /// gamcha-red scarf accent.
+  static const foxDefault = PaletteColors(
+    skin: Color(0xFFE8873B),
+    skinShade: Color(0xFFC9662A),
+    hair: Color(0xFF8C3A1E),
+    shirt: Color(0xFFE8873B),
+    shirtPattern: Color(0xFFC9662A),
+    bottom: Color(0xFF7A4A22),
+    accent: Color(0xFFC7443A), // scarf red
+    footwear: Color(0xFF2E2620),
+    outline: Color(0xFF2E2620),
+    cheek: Color(0x2BD9773F),
+    furC: Color(0xFFE8873B),
+    furShadeC: Color(0xFFC9662A),
+    bellyC: Color(0xFFFFF4E0),
+    stripeC: Color(0xFF8C4A1F),
+    noseC: Color(0xFF33261F),
+    earInnerC: Color(0xFFC9662A),
+  );
+
   static const furSwatches = [
     Color(0xFFF09A2E), Color(0xFFE8862B), Color(0xFFD96A1A), Color(0xFFB8561F),
     Color(0xFF8C8C96), Color(0xFF6E6E78), Color(0xFFC9B18A), Color(0xFFE9D8A6),

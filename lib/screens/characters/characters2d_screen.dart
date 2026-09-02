@@ -51,6 +51,7 @@ class Characters2DScreen extends StatelessWidget {
                     PremiumButton(label: 'From Prompt', icon: Icons.auto_awesome_rounded, small: true, onPressed: () => showPromptDialog(context)),
                     const SizedBox(width: 8),
                     PremiumButton(label: 'PNG', icon: Icons.add_photo_alternate_outlined, small: true, style: PremiumButtonStyle.tonal, onPressed: () => importPngCharacter(context)),
+                    PremiumButton(label: 'ZIP', icon: Icons.folder_zip_outlined, small: true, style: PremiumButtonStyle.tonal, onPressed: () => importZipPackCharacter(context)),
                   ],
                 ),
               ),

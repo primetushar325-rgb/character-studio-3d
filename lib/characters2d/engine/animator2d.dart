@@ -7,6 +7,70 @@ import 'rig2d.dart';
 import 'speech.dart';
 import 'state_machine2d.dart';
 
+/// Deterministic tail-wag + ear motion for rigs with [Rig2D.secondaryBones].
+///
+/// Pure function of (clipId, time): the same inputs always produce the same
+/// angles, so the editor preview, playback and the exporter all agree
+/// (§35 preview/export determinism). Segments phase-cascade like a real
+/// follow-through chain.
+Map<String, double> foxSecondaryMotion(String clipId, double t) {
+  final c = clipId.split('_').first;
+  double freq;
+  double amp;
+  double tailDroop = 0;
+  double earBase = 0;
+  double earAsym = 0;
+  switch (c) {
+    case 'walk':
+      freq = 1.7;
+      amp = 9;
+    case 'run':
+      freq = 3.1;
+      amp = 15;
+      earBase = -9; // pinned back at speed
+    case 'sleep':
+    case 'to':
+      freq = 0.25;
+      amp = 0.8;
+      tailDroop = 20; // settles down
+      earBase = 20; // flopped sideways
+    case 'sit':
+      freq = 0.55;
+      amp = 4;
+    case 'sad':
+    case 'fall':
+      freq = 0.3;
+      amp = 1.5;
+      tailDroop = 24;
+      earBase = -14;
+    case 'jump':
+      freq = 2.2;
+      amp = 13;
+    case 'wave':
+    case 'talk':
+    case 'happy':
+      freq = 1.25;
+      amp = 7;
+      earBase = 8; // perked up
+    case 'think':
+      freq = 0.5;
+      amp = 3;
+      earAsym = 10; // one ear tilted
+    default: // idle & friends
+      freq = 0.8;
+      amp = 5;
+  }
+  final w = 2 * math.pi * freq;
+  final sw = math.sin(t * w);
+  return {
+    'tail1': math.sin(t * w) * amp * .55 + tailDroop,
+    'tail2': math.sin(t * w - 0.9) * amp * .8 + tailDroop * .5,
+    'tail3': math.sin(t * w - 1.7) * amp * .95 + tailDroop * .3,
+    'earL': math.sin(t * .45 + .3) * 2.6 + earBase + earAsym * .5 + sw * .8,
+    'earR': math.sin(t * .38 + 1.7) * 2.6 + earBase - earAsym * .5 - sw * .8,
+  };
+}
+
 /// Fully-assembled frame handed to the painter every tick.
 class PuppetFrameData {
   PuppetFrameData({
@@ -351,6 +415,16 @@ class PuppetAnimator {
       }
       combined.extras['_lookX'] = combined.extra('_lookX') + headMove.extra('_lookX') * w;
       combined.extras['_lookY'] = combined.extra('_lookY') + headMove.extra('_lookY') * w;
+    }
+
+    // --- Secondary motion: fox tail wag + ears (PHASE 5) -------------------
+    // Deterministic pure function of (clipId, clock) — the timeline
+    // evaluation sets the clock from scene time, so preview == export.
+    if (rig.byName.containsKey('tail1')) {
+      final sec = foxSecondaryMotion(_clipId, _clock);
+      for (final e in sec.entries) {
+        combined.angles[e.key] = (combined.angles[e.key] ?? 0) + e.value;
+      }
     }
 
     // --- Face layer --------------------------------------------------------

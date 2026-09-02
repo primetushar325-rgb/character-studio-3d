@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../characters2d/art/character_catalog.dart';
 import '../../characters2d/character2d_model.dart';
 import '../../characters2d/png_character.dart';
+import '../../characters2d/zip_pack.dart';
 import '../../core/theme/app_colors.dart';
 import '../../state/editor_provider.dart';
 import '../../state/library2d_provider.dart';
@@ -89,6 +91,58 @@ String _nameFromPath(String path) {
   final base = path.split(Platform.pathSeparator).last;
   final noExt = base.contains('.') ? base.substring(0, base.lastIndexOf('.')) : base;
   return noExt.isEmpty ? 'PNG Character' : noExt.replaceFirst(noExt[0], noExt[0].toUpperCase());
+}
+
+/// ---- ZIP CHARACTER PACK IMPORT ---------------------------------------------
+///
+/// 1. System picker → .zip (manifest.json + art/*.png).
+/// 2. The archive is parsed (never executed): manifest, bones and art are
+///    validated — circular parents, missing art and non-PNG files reject the
+///    pack with a clear reason.
+/// 3. Valid packs install to the app's pack directory and register a fully
+///    rigged character (custom bones included) on the shared engine.
+Future<void> importZipPackCharacter(BuildContext context) async {
+  final res = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['zip'],
+    withData: true,
+  );
+  final file = res?.files.single;
+  final bytes = file?.bytes;
+  if (bytes == null) return;
+  if (!context.mounted) return;
+
+  final lib = context.read<Library2DProvider>();
+  final ed = context.read<EditorProvider>();
+  final messenger = ScaffoldMessenger.of(context);
+  final navigator = Navigator.of(context);
+
+  try {
+    final pack = await importZipPackBytes(Uint8List.fromList(bytes));
+    final character = Character2D(
+      id: pack.specId,
+      specId: pack.specId,
+      name: pack.name,
+      isVariant: true,
+      imagePath: pack.dir,
+      rigKind: pack.rigKind,
+      createdAt: DateTime.now(),
+    );
+    await lib.saveVariantFull(character);
+    ed.loadCharacter(pack.specId);
+    navigator.pop();
+    messenger.showSnackBar(
+      SnackBar(content: Text('${pack.name} pack imported on rig ${pack.rigKind}.'), backgroundColor: AppColors.surfaceAlt),
+    );
+  } on ZipPackException catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text(e.toString()), backgroundColor: AppColors.dangerSoft),
+    );
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text('Pack could not be imported: \$e'), backgroundColor: AppColors.dangerSoft),
+    );
+  }
 }
 
 /// ---- PROMPT → CHARACTER --------------------------------------------------------

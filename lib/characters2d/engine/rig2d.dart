@@ -46,8 +46,24 @@ class Rig2D {
   /// Design-space ground line (distance below the root origin).
   final double groundY;
 
-  static Rig2D byKind(String kind) =>
-      kind == 'quadruped_v1' ? Rig2D.quadrupedV1() : Rig2D.humanoidV1();
+  /// Custom rigs registered at runtime (imported ZIP packs). Custom bones
+  /// resolve through the same single choke point as the built-ins, so the
+  /// painter, animator, thumbnails and exports all share one skeleton.
+  static final Map<String, Rig2D> dynamicKinds = {};
+
+  /// Registers a runtime rig (ZIP pack import). Re-registering the same kind
+  /// replaces the bones (idempotent re-import / rehydration).
+  static void registerKind(String kind, Rig2D rig) => dynamicKinds[kind] = rig;
+
+  static Rig2D byKind(String kind) {
+    final dyn = dynamicKinds[kind];
+    if (dyn != null) return dyn;
+    return kind == 'quadruped_v1'
+        ? Rig2D.quadrupedV1()
+        : kind == 'fox_v1'
+            ? Rig2D.foxV1()
+            : Rig2D.humanoidV1();
+  }
 
   /// Bones considered "upper body" for the upper-body animation layer.
   static const Set<String> upperBodyBones = {
@@ -127,6 +143,30 @@ class Rig2D {
     ];
     return Rig2D(q, groundY: 0, kind: 'quadruped_v1');
   }
+
+  /// PHASE 5 — anthropomorphic fox rig: the full humanoid_v1 skeleton (so
+  /// every standard clip, the state machine and the face rig all work
+  /// unchanged) PLUS two ear bones and a 3-segment tail chain
+  /// (tailBase/Mid/Tip) driven by deterministic secondary motion.
+  factory Rig2D.foxV1() {
+    final h = Rig2D.humanoidV1();
+    final bones = [...h.bones, ..._foxExtraBones];
+    return Rig2D(bones, groundY: h.groundY, kind: 'fox_v1');
+  }
+
+  static const List<Bone2D> _foxExtraBones = [
+    // Ears on top of the skull (head-local +Y runs chin-ward).
+    Bone2D(name: 'earL', parent: 'head', attach: math.Point(-11, 7), restAngle: 194, length: 15),
+    Bone2D(name: 'earR', parent: 'head', attach: math.Point(11, 7), restAngle: 166, length: 15),
+    // Tail hanging from the pelvis, curving gently to the character's side.
+    Bone2D(name: 'tail1', parent: 'hips', attach: math.Point(3, 12), restAngle: 168, length: 20),
+    Bone2D(name: 'tail2', parent: 'tail1', attach: math.Point(0, 20), restAngle: -16, length: 17),
+    Bone2D(name: 'tail3', parent: 'tail2', attach: math.Point(0, 17), restAngle: -14, length: 15),
+  ];
+
+  /// Bones driven by deterministic secondary motion (wag/ears) in the
+  /// animator for rigs that have them.
+  static const Set<String> secondaryBones = {'tail1', 'tail2', 'tail3', 'earL', 'earR'};
 
   bool get isValid {
     final names = bones.map((b) => b.name).toSet();

@@ -159,6 +159,20 @@ Color resolveFill(FillSlot fill, PaletteResolver c) {
       return c.get('glasses', const Color(0xFF2B2523));
     case 'book':
       return c.get('book', const Color(0xFF2B2523));
+    // Animal slots (fox/tiger/...). These were previously falling through
+    // to the outline default, which painted every animal silhouette black.
+    case 'fur':
+      return c.get('fur', c.get('skin', const Color(0xFF2B2523)));
+    case 'furShade':
+      return c.get('furShade', c.get('skinShade', const Color(0xFF2B2523)));
+    case 'belly':
+      return c.get('belly', const Color(0xFFFCE8C8));
+    case 'stripe':
+      return c.get('stripe', c.get('hair', const Color(0xFF2B2523)));
+    case 'nose':
+      return c.get('nose', const Color(0xFFB95B5B));
+    case 'earInner':
+      return c.get('earInner', const Color(0xFFEFA3A3));
     case 'white':
       return const Color(0xFFFFFFFF);
     case 'mouth':

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color;
 
@@ -5,6 +7,7 @@ import '../characters2d/art/character_catalog.dart';
 import '../characters2d/character2d_model.dart';
 import '../characters2d/character2d_repository.dart';
 import '../characters2d/png_character.dart';
+import '../characters2d/zip_pack.dart';
 
 /// App-wide 2D character library state: the three built-in characters plus
 /// saved customization variants, favorites and recently-used tracking.
@@ -104,6 +107,12 @@ class Library2DProvider extends ChangeNotifier {
       if (path == null) continue;
       if (CharacterCatalog.byId(v.specId) != null) continue; // already live
       try {
+        // ZIP pack imports persist the pack directory; re-register the whole
+        // pack (custom bones + cached art) so it survives restarts intact.
+        if (FileSystemEntity.isDirectorySync(path)) {
+          await registerZipPackFromDir(path, id: v.specId);
+          continue;
+        }
         final art = await loadPngArt(path);
         if (art == null) continue; // artwork file missing → skip safely
         CharacterCatalog.register(pngSpecFromArt(

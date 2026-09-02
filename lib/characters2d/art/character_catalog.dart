@@ -6,6 +6,7 @@ import '../engine/palette_resolver.dart';
 import 'bd_farmer.dart';
 import 'palettes.dart';
 import 'school_teacher.dart';
+import 'fox.dart';
 import 'tiger.dart';
 import 'village_girl.dart';
 
@@ -195,7 +196,30 @@ class CharacterCatalog {
 
   static List<Part2D> _tigerBuild(Set<String> accessories) => buildTigerParts();
 
-  static const List<Character2DSpec> builtIn = [tiger, farmer, villageGirl, teacher];
+  /// PHASE 5 — Premium Fox: anthropomorphic rigged character with ears and a
+  /// 3-segment tail (deterministic wag), full standard clip set via the
+  /// humanoid skeleton, own expressive face, optional gamcha scarf.
+  static const fox = Character2DSpec(
+    id: 'fox',
+    name: 'Premium Fox',
+    category: 'Animal',
+    description: 'Friendly cartoon fox — expressive face, wagging tail, gamcha scarf.',
+    defaultPalette: Palettes.foxDefault,
+    slots: [
+      PaletteSlot(key: 'fur', label: 'Fur', swatches: Palettes.furSwatches),
+      PaletteSlot(key: 'accent', label: 'Scarf', swatches: Palettes.accentSwatches),
+    ],
+    accessoryOptions: {'scarf': 'Gamcha scarf'},
+    defaultAccessories: {'scarf'},
+    faceStyle: null, // the fox draws its own expressive face
+    scale: 1.04,
+    rigKind: 'fox_v1',
+    build: _foxBuild,
+  );
+
+  static List<Part2D> _foxBuild(Set<String> accessories) => buildFoxParts(accessories);
+
+  static const List<Character2DSpec> builtIn = [fox, tiger, farmer, villageGirl, teacher];
 
   /// Runtime-registered characters (imported PNG cutouts, prompt-generated).
   static final List<Character2DSpec> dynamicSpecs = [];
