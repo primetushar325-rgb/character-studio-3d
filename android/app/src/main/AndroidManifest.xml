@@ -1,8 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 100% offline 2D editor. INTERNET is only required because the
-         ffmpeg-kit bundler references it; the app itself never contacts
-         any remote host and works fully in airplane mode. -->
+    <!-- 100% offline 2D editor: no network functionality anywhere. The
+         app itself declares no permissions; the INTERNET permission that
+         library manifests (ffmpeg-kit) merge in is explicitly REMOVED so
+         the release APK has zero network access. Debug/profile builds
+         re-add it (their own manifests) only for Flutter hot reload. -->
+    <uses-permission
+        android:name="android.permission.INTERNET"
+        tools:node="remove" />
 
     <application
         android:name="${applicationName}"
