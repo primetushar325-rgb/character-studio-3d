@@ -12,6 +12,33 @@ import '../scene/scene_renderer.dart' show renderSceneFrame;
 import '../state/editor_provider.dart';
 import 'gif_encoder.dart';
 
+/// Validates a finished export BEFORE it can be saved/shared: the file must
+/// exist, have a sane size, and start with the correct container magic
+/// bytes. A corrupt export never reaches the gallery this way.
+Future<void> validateExportFile(String path, String mime) async {
+  final f = File(path);
+  if (!await f.exists()) throw 'Export validation failed: file was not written.';
+  final size = await f.length();
+  if (size < 1024) throw 'Export validation failed: file is only $size bytes.';
+  final head = <int>[];
+  await for (final chunk in f.openRead(0, 16)) {
+    head.addAll(chunk);
+    if (head.length >= 16) break;
+  }
+  bool ok;
+  if (mime == 'video/mp4') {
+    // ISO-BMFF: bytes 4..8 are the box type 'ftyp'.
+    ok = head.length >= 12 && String.fromCharCodes(head.sublist(4, 8)) == 'ftyp';
+  } else if (mime == 'image/gif') {
+    ok = head.length >= 6 && String.fromCharCodes(head.sublist(0, 4)) == 'GIF8';
+  } else if (mime == 'image/png') {
+    ok = head.length >= 8 && head[0] == 0x89 && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47;
+  } else {
+    ok = true;
+  }
+  if (!ok) throw 'Export validation failed: not a valid $mime file (bad header).';
+}
+
 /// Real frame-based export: renders the actual 16:9 composition frame by
 /// frame (never the screen/UI) and encodes Video (H.264 MP4 via ffmpeg-kit),
 /// GIF (pure Dart), PNG and PNG sequences.
@@ -97,6 +124,7 @@ class ExportService2D {
           op(const ExportProgress(ExportPhase.finalizing, 0.95, 'Saving PNG…'));
           final f = File('${outDir.path}/frame_$stamp.png');
           await f.writeAsBytes(await File(pngPaths.first).readAsBytes());
+          await validateExportFile(f.path, 'image/png');
           return ExportResult(path: f.path, mime: 'image/png', fileBytes: await f.length());
         case ExportType.pngSequence:
           op(const ExportProgress(ExportPhase.finalizing, 0.9, 'Saving PNG sequence…'));
@@ -111,6 +139,7 @@ class ExportService2D {
           final bytes = encoder.encode();
           final f = File('${outDir.path}/animation_$stamp.gif');
           await f.writeAsBytes(bytes);
+          await validateExportFile(f.path, 'image/gif');
           op(const ExportProgress(ExportPhase.done, 1, 'Export complete'));
           return ExportResult(path: f.path, mime: 'image/gif', fileBytes: bytes.length);
         case ExportType.video:
@@ -140,10 +169,12 @@ class ExportService2D {
             projectDir: ed.projectDirPath ?? '',
           );
           if (plan.hasAudio) args.insertAll(args.length - 1, ['-preset', 'medium', '-movflags', '+faststart']);
-          final rc = await _runFfmpeg(args);
+          var ffmpegLog = '';
+          final rc = await _runFfmpeg(args, onFailLog: (l) => ffmpegLog = l);
           if (rc != 0) {
-            throw 'Video encoder failed (code $rc)';
+            throw 'Video encoder failed (code $rc). Encoder log: $ffmpegLog';
           }
+          await validateExportFile(out, 'video/mp4');
           op(const ExportProgress(ExportPhase.done, 1, 'Export complete'));
           return ExportResult(path: out, mime: 'video/mp4', fileBytes: await File(out).length(), frameCount: total);
       }
@@ -178,8 +209,14 @@ class ExportService2D {
 
 typedef FfmpegRunner = Future<int> Function(List<String> args);
 
-Future<int> _runFfmpeg(List<String> args) async {
+Future<int> _runFfmpeg(List<String> args, {void Function(String)? onFailLog}) async {
   final session = await FFmpegKit.execute(args.join(' '));
   final code = await session.getReturnCode();
-  return code?.getValue() ?? -1;
+  final rc = code?.getValue() ?? -1;
+  if (rc != 0 && onFailLog != null) {
+    final log = (await session.getAllLogsAsString()) ?? '';
+    // Keep the informative tail (full logs can be huge).
+    onFailLog(log.length > 900 ? log.substring(log.length - 900) : log);
+  }
+  return rc;
 }

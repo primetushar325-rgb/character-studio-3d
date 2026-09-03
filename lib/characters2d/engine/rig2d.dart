@@ -12,6 +12,8 @@ class Bone2D {
     required this.attach,
     required this.restAngle,
     required this.length,
+    this.minAngle = -180,
+    this.maxAngle = 180,
   });
 
   final String name;
@@ -26,6 +28,15 @@ class Bone2D {
 
   /// Bone length in rig units (design height ~= 330u).
   final double length;
+
+  /// Pose-delta limits (degrees relative to rest). Defaults are unlimited —
+  /// existing rigs and clips are byte-identical. Rigs that opt in (e.g. fox
+  /// ears/tail) get clamped in the single FK choke point, so timeline clips,
+  /// gestures and future drags can never bend a joint unnaturally.
+  final double minAngle;
+  final double maxAngle;
+
+  double clampPose(double degrees) => degrees.clamp(minAngle, maxAngle);
 }
 
 /// Universal 2D humanoid rig shared by every 2D character.
@@ -159,9 +170,9 @@ class Rig2D {
     Bone2D(name: 'earL', parent: 'head', attach: math.Point(-11, 7), restAngle: 194, length: 15),
     Bone2D(name: 'earR', parent: 'head', attach: math.Point(11, 7), restAngle: 166, length: 15),
     // Tail hanging from the pelvis, curving gently to the character's side.
-    Bone2D(name: 'tail1', parent: 'hips', attach: math.Point(3, 12), restAngle: 168, length: 20),
-    Bone2D(name: 'tail2', parent: 'tail1', attach: math.Point(0, 20), restAngle: -16, length: 17),
-    Bone2D(name: 'tail3', parent: 'tail2', attach: math.Point(0, 17), restAngle: -14, length: 15),
+    Bone2D(name: 'tail1', parent: 'hips', attach: math.Point(3, 12), restAngle: 168, length: 20, minAngle: -95, maxAngle: 85),
+    Bone2D(name: 'tail2', parent: 'tail1', attach: math.Point(0, 20), restAngle: -16, length: 17, minAngle: -70, maxAngle: 70),
+    Bone2D(name: 'tail3', parent: 'tail2', attach: math.Point(0, 17), restAngle: -14, length: 15, minAngle: -70, maxAngle: 70),
   ];
 
   /// Bones driven by deterministic secondary motion (wag/ears) in the
@@ -219,7 +230,8 @@ SkeletonSolve solveSkeleton(Rig2D rig, Map<String, double> poseAngles) {
   final deg = math.pi / 180.0;
 
   void solve(Bone2D bone, math.Point<double> parentJoint, double parentWorldRad) {
-    final worldDeg = parentWorldRad / deg + bone.restAngle + (poseAngles[bone.name] ?? 0);
+    final worldDeg =
+        parentWorldRad / deg + bone.restAngle + bone.clampPose(poseAngles[bone.name] ?? 0);
     final worldRad = worldDeg * deg;
     angles[bone.name] = worldRad;
     joints[bone.name] = parentJoint;

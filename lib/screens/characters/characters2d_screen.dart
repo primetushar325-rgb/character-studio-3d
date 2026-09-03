@@ -171,6 +171,15 @@ class _CharacterCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Long-press: manage user-imported characters (rename/delete).
+                // Built-ins are never editable here — nothing destructive.
+                if (character.isVariant)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.deferToChild,
+                      onLongPress: () => _manage(context, lib),
+                    ),
+                  ),
                 Positioned(
                   top: 6,
                   right: 6,
@@ -223,6 +232,64 @@ class _CharacterCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _manage(BuildContext context, Library2DProvider lib) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(character.name,
+                style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.drive_file_rename_outline, color: AppColors.accent, size: 20),
+            title: const Text('Rename', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            onTap: () => Navigator.pop(ctx, 'rename'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+            title: const Text('Delete from library', style: TextStyle(color: AppColors.danger, fontSize: 13)),
+            onTap: () => Navigator.pop(ctx, 'delete'),
+          ),
+        ]),
+      ),
+    );
+    if (!context.mounted) return;
+    if (action == 'rename') {
+      final controller = TextEditingController(text: character.name);
+      final name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Rename character', style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+          content: TextField(controller: controller, autofocus: true, style: const TextStyle(color: AppColors.textPrimary)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Save')),
+          ],
+        ),
+      );
+      if (name != null && name.isNotEmpty) await lib.renameVariant(character.id, name);
+    } else if (action == 'delete') {
+      final sure = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Delete character?', style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+          content: Text('"${character.name}" will be removed from your library.',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: AppColors.danger))),
+          ],
+        ),
+      );
+      if (sure == true) await lib.deleteVariant(character.id);
+    }
   }
 
   Future<void> _exportHtml(BuildContext context, EditorProvider ed) async {
