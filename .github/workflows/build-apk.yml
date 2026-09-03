@@ -64,13 +64,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v2.5.0
-          name: Character Studio 2D v2.5.0 — Phase 5/6: Fox rig + effects + hardening
+          name: 'Character Studio 2D v2.5.0 — Fox rig, effects, hardening'
           body: |
-            **Character Studio 2D v2.4.1** — offline 2D story/video editor: projects, multi-object scene editor, story timeline, audio.
+            **Character Studio 2D v2.5.0** — offline 2D story/video editor: projects, multi-object scene editor, story timeline, audio.
 
             🔧 v2.4.1: the app now opens on the **HOME screen** (New Project / My Projects / Characters / Settings). In v2.4.0 the shell still opened the bare editor tab by mistake — the whole project system was there, just unreachable from the entry point.
 
-            🎉 v2.5.0 — PROFESSIONAL 2D RIG + EFFECTS: "My Projects" no longer spins forever and projects open correctly. Root cause: the Home screen never triggered the project-list load, and the project provider was never bound to the editor — open/create/autosave silently no-oped on device (tests had wired both manually). Now wired at app startup with a real-loading regression test, a proper ERROR+RETRY state, and safer open logging.
+            🎉 v2.5.0 — PROFESSIONAL 2D RIG + EFFECTS: new Premium Fox character (full humanoid rig + ear/tail bones, deterministic wag, expressive face, gamcha scarf), custom ZIP character pack import with manifest validation, data-driven timeline effects (fade/shake/zoom/pulse/flash — preview == export), export validation + safe cancel, bone rotation limits, library rename/delete, and fixed long-standing render bugs (animal colors, sleep pose, ground shadow).
 
             🔒 v2.4.2: the release APK now requests **ZERO Android permissions** — the unused INTERNET permission (merged in by a bundler library) is explicitly removed. The app is fully offline.
 
