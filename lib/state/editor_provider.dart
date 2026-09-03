@@ -661,7 +661,7 @@ class EditorProvider extends ChangeNotifier {
     if (c != null) return c;
     final character = _library.byId(obj.characterId!);
     if (character == null) return null;
-    c = PuppetController(spec: character.spec, palette: character.colors, accessories: {...character.accessories});
+    c = PuppetController(spec: character.spec, palette: character.colors, accessories: {...character.accessories}, props: character.props);
     c.setAction(obj.actionId);
     if (obj.expression != null) {
       for (final e in Expr.values) {

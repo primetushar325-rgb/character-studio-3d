@@ -7,6 +7,7 @@ import '../characters2d/art/character_catalog.dart';
 import '../characters2d/character2d_model.dart';
 import '../characters2d/character2d_repository.dart';
 import '../characters2d/png_character.dart';
+import '../characters2d/props.dart';
 import '../characters2d/zip_pack.dart';
 
 /// App-wide 2D character library state: the three built-in characters plus
@@ -107,6 +108,15 @@ class Library2DProvider extends ChangeNotifier {
       if (path == null) continue;
       if (CharacterCatalog.byId(v.specId) != null) continue; // already live
       try {
+        // Custom PNG props: decode once into the shared art cache so painters
+        // can peek them synchronously (same cache ZIP packs use).
+        for (final pr in v.props) {
+          final ip = pr.imagePath;
+          if (pr.kind == PropKind.custom && ip != null && PackArtCache.instance.peek(ip) == null) {
+            final f = File(ip);
+            if (await f.exists()) await PackArtCache.instance.load(ip);
+          }
+        }
         // ZIP pack imports persist the pack directory; re-register the whole
         // pack (custom bones + cached art) so it survives restarts intact.
         if (FileSystemEntity.isDirectorySync(path)) {

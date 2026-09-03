@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'art/character_catalog.dart';
 import 'art/palettes.dart';
+import 'props.dart';
 
 /// A usable 2D character: a catalog spec + optional customization.
 /// Built-ins and saved variants share this shape, so the library, preview,
@@ -13,6 +14,7 @@ class Character2D {
     required this.name,
     Map<String, Color>? palette,
     Set<String>? accessories,
+    List<PropAttachment>? props,
     this.isVariant = false,
     this.imagePath,
     this.rigKind,
@@ -21,7 +23,8 @@ class Character2D {
     this.lastUsedAt,
     this.usageCount = 0,
   })  : paletteOverrides = palette ?? {},
-        accessories = accessories ?? {};
+        accessories = accessories ?? {},
+        props = props ?? [];
 
   final String id;
 
@@ -34,6 +37,10 @@ class Character2D {
 
   /// Active accessory keys (gamcha / dupatta / glasses / book ...).
   final Set<String> accessories;
+
+  /// Bone-attached props (hat / stick / imported PNG ...). Empty by default;
+  /// persisted with the variant and inherited by scene controllers.
+  final List<PropAttachment> props;
 
   final bool isVariant;
 
@@ -81,6 +88,7 @@ class Character2D {
         'name': name,
         'palette': {for (final e in paletteOverrides.entries) e.key: e.value.value},
         'accessories': accessories.toList(),
+        'props': [for (final p in props) p.toJson()],
         'imagePath': imagePath,
         'createdAt': createdAt?.millisecondsSinceEpoch,
         'updatedAt': updatedAt?.millisecondsSinceEpoch,
@@ -97,6 +105,10 @@ class Character2D {
             e.key: Color((e.value as num).toInt()),
         },
         accessories: {...?((json['accessories'] as List?)?.cast<String>())},
+        props: [
+          for (final e in (json['props'] as List? ?? []))
+            if (e is Map<String, dynamic>) PropAttachment.fromJson(e),
+        ],
         isVariant: true,
         imagePath: json['imagePath'] as String?,
         rigKind: json['rigKind'] as String?,

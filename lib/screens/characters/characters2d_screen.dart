@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../characters2d/character2d_model.dart';
+import '../../characters2d/props.dart';
+import '../../characters2d/zip_pack.dart';
 import '../../characters2d/widgets2d/puppet_stage.dart';
 import '../../core/theme/app_colors.dart';
 import '../../state/editor_provider.dart';
@@ -251,6 +257,11 @@ class _CharacterCard extends StatelessWidget {
             onTap: () => Navigator.pop(ctx, 'rename'),
           ),
           ListTile(
+            leading: const Icon(Icons.auto_awesome, color: Color(0xFFB28DFF), size: 20),
+            title: const Text('Props… (hat / stick / bag / PNG)', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            onTap: () => Navigator.pop(ctx, 'props'),
+          ),
+          ListTile(
             leading: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
             title: const Text('Delete from library', style: TextStyle(color: AppColors.danger, fontSize: 13)),
             onTap: () => Navigator.pop(ctx, 'delete'),
@@ -259,6 +270,10 @@ class _CharacterCard extends StatelessWidget {
       ),
     );
     if (!context.mounted) return;
+    if (action == 'props') {
+      await showPropsEditor(context, character);
+      return;
+    }
     if (action == 'rename') {
       final controller = TextEditingController(text: character.name);
       final name = await showDialog<String>(
@@ -300,5 +315,199 @@ class _CharacterCard extends StatelessWidget {
     }
     await openProjectEditor(context, projects.projects.first.id);
     if (context.mounted) await exportCharacterHtml(context, ed);
+  }
+}
+
+
+/// ---- PROPS EDITOR (§6) --------------------------------------------------------
+///
+/// Live-preview editor for bone-attached props: add from the built-in
+/// library or import a transparent PNG, pick the bone, fine-tune
+/// offset/rotation/scale/z, toggle visibility, delete. Saves onto the
+/// variant, so every project using this character gets the props.
+Future<void> showPropsEditor(BuildContext context, Character2D character) async {
+  final lib = context.read<Library2DProvider>();
+  final props = [for (final p in character.props) p.copyWith()];
+  var refresh = 0; // cheap rebuild trigger
+
+  Future<void> commit(StateSetter setState) async {
+    character.props
+      ..clear()
+      ..addAll(props);
+    await lib.updateVariant(character);
+    setState(() => refresh++);
+  }
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Props — ${character.name}',
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Live preview with the current props.
+                Container(
+                  height: 190,
+                  decoration: BoxDecoration(color: const Color(0xFF1B2130), borderRadius: BorderRadius.circular(14)),
+                  child: PuppetThumbnail(
+                    spec: character.spec,
+                    resolver: character.colors.toResolver(),
+                    accessories: character.accessories,
+                    props: props,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final kind in [PropKind.hat, PropKind.glasses, PropKind.stick, PropKind.bag, PropKind.phone])
+                      ActionChip(
+                        backgroundColor: AppColors.surfaceAlt,
+                        side: BorderSide(color: AppColors.stroke),
+                        label: Text(propLabel(kind), style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                        onPressed: () {
+                          props.add(PropAttachment(
+                            id: 'prop_${DateTime.now().millisecondsSinceEpoch}',
+                            kind: kind,
+                            attachedBoneId: kind == PropKind.glasses || kind == PropKind.hat ? 'head' : 'rightHand',
+                            zIndex: kind == PropKind.glasses || kind == PropKind.hat ? 10.6 : 12.4,
+                          ));
+                          commit(setState);
+                        },
+                      ),
+                    ActionChip(
+                      backgroundColor: AppColors.surfaceAlt,
+                      side: BorderSide(color: AppColors.stroke),
+                      avatar: const Icon(Icons.add_photo_alternate_outlined, size: 15, color: AppColors.accent),
+                      label: const Text('Import PNG', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                      onPressed: () async {
+                        final res = await FilePicker.platform.pickFiles(type: FileType.image);
+                        final src = res?.files.single.path;
+                        if (src == null) return;
+                        final docs = await getApplicationDocumentsDirectory();
+                        final dir = Directory('${docs.path}/character_props')..createSync(recursive: true);
+                        final id = 'prop_${DateTime.now().millisecondsSinceEpoch}';
+                        final dest = '$id.png';
+                        await File(src).copy('${dir.path}/$dest');
+                        await PackArtCache.instance.load('${dir.path}/$dest');
+                        props.add(PropAttachment(id: id, kind: PropKind.custom, attachedBoneId: 'rightHand', imagePath: '${dir.path}/$dest', zIndex: 12.4));
+                        commit(setState);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (props.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text('No props yet — add one above.',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  ),
+                for (final p in props)
+                  _PropEditorCard(
+                    prop: p,
+                    bones: character.spec.rigKind == 'quadruped_v1'
+                        ? const ['head', 'tail1', 'leftFoot', 'rightFoot']
+                        : kPropBoneChoices,
+                    onEdited: (np) {
+                      final i = props.indexWhere((e) => e.id == np.id);
+                      if (i >= 0) props[i] = np;
+                      commit(setState);
+                    },
+                    onDeleted: () {
+                      props.removeWhere((e) => e.id == p.id);
+                      commit(setState);
+                    },
+                  ),
+                Text('refresh $refresh', style: const TextStyle(color: Colors.transparent, fontSize: 1)),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done')),
+        ],
+      ),
+    ),
+  );
+}
+
+class _PropEditorCard extends StatelessWidget {
+  const _PropEditorCard({required this.prop, required this.bones, required this.onEdited, required this.onDeleted});
+  final PropAttachment prop;
+  final List<String> bones;
+  final ValueChanged<PropAttachment> onEdited;
+  final VoidCallback onDeleted;
+
+  void _edit(PropAttachment np) => onEdited(np);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('${propLabel(prop.kind)} → ${prop.attachedBoneId}',
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 12.5, fontWeight: FontWeight.w700)),
+              ),
+              IconButton(
+                icon: Icon(prop.visible ? Icons.visibility : Icons.visibility_off, size: 17, color: AppColors.textMuted),
+                onPressed: () => _edit(prop.copyWith(visible: !prop.visible)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 17, color: AppColors.danger),
+                onPressed: onDeleted,
+              ),
+            ],
+          ),
+          DropdownButton<String>(
+            value: bones.contains(prop.attachedBoneId) ? prop.attachedBoneId : bones.first,
+            dropdownColor: AppColors.surface,
+            isDense: true,
+            items: [for (final b in bones) DropdownMenuItem(value: b, child: Text(b, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)))],
+            onChanged: (b) {
+              if (b == null) return;
+              _edit(prop.copyWith(attachedBoneId: b));
+            },
+          ),
+          _slider('Offset X', prop.dx, -40, 40, (v) => _edit(prop.copyWith(dx: v))),
+          _slider('Offset Y', prop.dy, -60, 60, (v) => _edit(prop.copyWith(dy: v))),
+          _slider('Rotation', prop.rotation, -180, 180, (v) => _edit(prop.copyWith(rotation: v))),
+          _slider('Scale', prop.scale, 0.3, 2.5, (v) => _edit(prop.copyWith(scale: v))),
+          _slider('Z order', prop.zIndex, 0, 14, (v) => _edit(prop.copyWith(zIndex: v))),
+        ],
+      ),
+    );
+  }
+
+  Widget _slider(String label, double value, double min, double max, ValueChanged<double> set) {
+    return Row(
+      children: [
+        SizedBox(width: 74, child: Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 10.5))),
+        Expanded(
+          child: Slider(
+            value: value.clamp(min, max),
+            min: min,
+            max: max,
+            activeColor: AppColors.accent,
+            onChanged: set,
+          ),
+        ),
+        SizedBox(width: 40, child: Text(value.toStringAsFixed(0), style: const TextStyle(color: AppColors.textSecondary, fontSize: 10.5))),
+      ],
+    );
   }
 }

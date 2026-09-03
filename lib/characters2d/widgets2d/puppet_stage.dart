@@ -3,6 +3,8 @@ import 'package:flutter/scheduler.dart';
 
 import '../art/character_catalog.dart';
 import '../engine/puppet.dart';
+import '../engine/palette_resolver.dart';
+import '../props.dart';
 import '../engine/rig2d.dart';
 import '../puppet_controller.dart';
 
@@ -58,6 +60,7 @@ class _PuppetStageState extends State<PuppetStage> with SingleTickerProviderStat
           spec: c.spec,
           resolver: c.resolver,
           accessories: c.accessories,
+          props: c.props,
           frameGetter: () => c.frame,
           directionLeft: c.directionLeft,
           background: widget.background,
@@ -72,11 +75,15 @@ class _PuppetStageState extends State<PuppetStage> with SingleTickerProviderStat
 
 /// Static thumbnail rendered straight from the vector rig.
 class PuppetThumbnail extends StatelessWidget {
-  const PuppetThumbnail({super.key, required this.spec, required this.resolver, this.accessories = const {}, this.background});
+  const PuppetThumbnail({super.key, required this.spec, required this.resolver, this.accessories = const {}, this.props = const [], this.background});
 
   final Character2DSpec spec;
-  final dynamic resolver;
+  final PaletteResolver resolver;
   final Set<String> accessories;
+
+  /// Bone-attached props drawn with the body (§6).
+  final List<PropAttachment> props;
+
   final Color? background;
 
   @override
@@ -86,8 +93,9 @@ class PuppetThumbnail extends StatelessWidget {
       size: Size.infinite,
       painter: PuppetPainter(
         spec: spec,
-        resolver: resolver as dynamic,
+        resolver: resolver,
         accessories: accessories,
+        props: props,
         frameGetter: source.call,
         directionLeft: false,
         background: background,

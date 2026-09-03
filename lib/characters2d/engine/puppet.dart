@@ -8,6 +8,7 @@ import 'palette_resolver.dart';
 import 'animator2d.dart';
 import 'face_rig.dart';
 import 'part2d.dart';
+import '../props.dart';
 import 'rig2d.dart';
 import 'shapes.dart';
 
@@ -24,8 +25,15 @@ class PuppetPainter extends CustomPainter {
     this.showGroundShadow = true,
     this.designSpace = const Size(360, 340),
     this.fit = BoxFit.contain,
+    this.props = const [],
     super.repaint,
-  }) : parts = orderParts(spec.build(accessories));
+  }) : parts = orderParts([
+          ...spec.build(accessories),
+          // Props ride the same part pipeline: bound to their bone, z-ordered
+          // with the body, mirrored with the rig — animation comes free.
+          for (final p in props)
+            if (p.visible) propPart(p),
+        ]);
 
   final Character2DSpec spec;
   final PaletteResolver resolver;
@@ -34,6 +42,9 @@ class PuppetPainter extends CustomPainter {
   final bool directionLeft;
   final Color? background;
   final bool showGroundShadow;
+
+  /// Bone-attached props (§6). See [propPart].
+  final List<PropAttachment> props;
 
   /// Logical design space mapped into the canvas (centered horizontally,
   /// baseline anchored near the bottom).

@@ -7,14 +7,16 @@ import 'engine/clips.dart' show idlePose;
 import 'engine/face_rig.dart';
 import 'engine/palette_resolver.dart';
 import 'engine/rig2d.dart';
+import 'props.dart';
 import 'engine/state_machine2d.dart';
 
 /// UI-facing controller for one live 2D puppet: base animation state, face,
 /// gestures, playback and customization. Pure logic — widgets only call this.
 class PuppetController extends ChangeNotifier {
-  PuppetController({required this.spec, PaletteColors? palette, Set<String>? accessories, int seed = 11})
+  PuppetController({required this.spec, PaletteColors? palette, Set<String>? accessories, List<PropAttachment>? props, int seed = 11})
       : animator = PuppetAnimator(rig: Rig2D.byKind(spec.rigKind), seed: seed),
         accessories = {...(accessories ?? spec.defaultAccessories)},
+        props = props ?? const [],
         _palette = palette ?? spec.defaultPalette;
 
   final Character2DSpec spec;
@@ -24,6 +26,10 @@ class PuppetController extends ChangeNotifier {
   PaletteColors get palette => _palette;
   PaletteResolver get resolver => _palette.toResolver();
   Set<String> accessories;
+
+  /// Bone-attached props; the painter draws them with the body parts so
+  /// they follow animation + mirroring automatically.
+  final List<PropAttachment> props;
 
   bool directionLeft = false;
   bool talkOverlay = false;
